@@ -1,0 +1,33 @@
+import "server-only";
+import { zodTextFormat } from "openai/helpers/zod";
+import { getOpenAI } from "@/lib/openai";
+import { generatedMealPlanSchema, type MealPlanRequest } from "@/lib/schemas/meal-plan";
+
+export async function generateMealPlan(input: MealPlanRequest) {
+  const client = getOpenAI();
+  const response = await client.responses.parse({
+    model: process.env.OPENAI_TEXT_MODEL || "gpt-6-luna",
+    store: false,
+    input: [
+      {
+        role: "system",
+        content: [
+          "Ты составляешь практичное меню для двух человек в Пхукете.",
+          "Пиши названия и инструкции по-русски. Не используй запрещённые продукты.",
+          "Количество ингредиентов должно быть точным, положительным и в g, ml или piece.",
+          "Не считай цену самостоятельно по выдуманным магазинным данным: возвращай осторожную оценку.",
+          "Для режима inventory сначала используй продукты с ближайшим сроком годности.",
+          "Обязательная техника: плита, аэрогриль, рисоварка, пароварка, микроволновка, весы или маломощный блендер. Не требуй другой техники."
+        ].join("\n")
+      },
+      {
+        role: "user",
+        content: JSON.stringify(input)
+      }
+    ],
+    text: { format: zodTextFormat(generatedMealPlanSchema, "meal_plan") }
+  });
+
+  if (!response.output_parsed) throw new Error("Meal plan was not returned");
+  return { plan: response.output_parsed, usage: response.usage, model: response.model };
+}
