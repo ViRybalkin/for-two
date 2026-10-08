@@ -122,7 +122,7 @@ export function AppShell() {
     <main className="site-shell">
       <div className="phone-surface">
         {tab === "today" && <TodayScreen onMenu={() => go("menu")} onInventory={() => go("inventory")} onRecipe={() => setSheet("recipe")} onAdd={() => setSheet("add")} onSettings={() => setSheet("settings")} notify={notify} />}
-        {tab === "inventory" && <InventoryScreen items={inventory} setItems={setInventory} onAdd={() => setSheet("add")} />}
+        {tab === "inventory" && <InventoryScreen items={inventory} setItems={setInventory} onAdd={() => setSheet("add")} notify={notify} />}
         {tab === "menu" && <MenuScreen inventory={inventory} onRecipe={() => setSheet("recipe")} notify={notify} />}
         {tab === "shopping" && <ShoppingScreen items={shopping} setItems={setShopping} notify={notify} onSearch={() => setSheet("catalog")} />}
         {tab === "more" && <MoreScreen onSettings={() => setSheet("settings")} notify={notify} />}
@@ -140,11 +140,19 @@ export function AppShell() {
         </nav>
       </div>
 
-      {sheet === "add" && <AddProductSheet onClose={() => setSheet(null)} onAdd={(item) => {
-        setInventory((old) => [item, ...old]);
-        void fetch("/api/inventory", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: item.name, quantity: item.quantity, unit: item.unit, storage: item.storage, expiryDate: null }) });
-        setSheet(null);
-        notify("Продукт добавлен в запасы");
+      {sheet === "add" && <AddProductSheet onClose={() => setSheet(null)} onAdd={async (item) => {
+        try {
+          const response = await fetch("/api/inventory", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: item.name, quantity: item.quantity, unit: item.unit, storage: item.storage, expiryDate: null }) });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data?.error?.message || "Не удалось сохранить продукт");
+          setInventory((old) => [{ ...item, id: data.id || item.id }, ...old]);
+          setSheet(null);
+          notify("Продукт сохранён в запасах");
+          return true;
+        } catch (error) {
+          notify(error instanceof Error ? error.message : "Не удалось сохранить продукт");
+          return false;
+        }
       }} />}
       {sheet === "settings" && <SettingsSheet onClose={() => setSheet(null)} notify={notify} />}
       {sheet === "recipe" && <RecipeView onClose={() => setSheet(null)} notify={notify} />}
@@ -211,18 +219,32 @@ function Metric({ value, label }: { value: string; label: string }) {
   return <div><strong>{value}</strong><span>{label}</span></div>;
 }
 
-function InventoryScreen({ items, setItems, onAdd }: { items: InventoryItem[]; setItems: React.Dispatch<React.SetStateAction<InventoryItem[]>>; onAdd: () => void }) {
+function InventoryScreen({ items, setItems, onAdd, notify }: { items: InventoryItem[]; setItems: React.Dispatch<React.SetStateAction<InventoryItem[]>>; onAdd: () => void; notify: (text: string) => void }) {
   const [query, setQuery] = useState("");
   const [storage, setStorage] = useState<"Все" | Storage>("Все");
+  const [pendingId, setPendingId] = useState<string | null>(null);
   const visible = items.filter((item) => (storage === "Все" || item.storage === storage) && item.name.toLowerCase().includes(query.toLowerCase()));
-  const adjust = (id: string, direction: number) => {
+  const adjust = async (id: string, direction: number) => {
     const item = items.find((entry) => entry.id === id);
     if (!item) return;
     const step = item.unit === "шт" ? 1 : 50;
     const delta = Math.max(-item.quantity, direction * step);
     if (delta === 0) return;
-    setItems((old) => old.map((entry) => entry.id === id ? { ...entry, quantity: Math.max(0, entry.quantity + delta) } : entry));
-    void fetch(`/api/inventory/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ delta }) });
+    const previousQuantity = item.quantity;
+    const optimisticQuantity = Math.max(0, item.quantity + delta);
+    setPendingId(id);
+    setItems((old) => old.map((entry) => entry.id === id ? { ...entry, quantity: optimisticQuantity } : entry));
+    try {
+      const response = await fetch(`/api/inventory/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ delta }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error?.message || "Не удалось изменить количество");
+      if (typeof data.quantity === "number") setItems((old) => old.map((entry) => entry.id === id ? { ...entry, quantity: data.quantity } : entry));
+    } catch (error) {
+      setItems((old) => old.map((entry) => entry.id === id ? { ...entry, quantity: previousQuantity } : entry));
+      notify(error instanceof Error ? error.message : "Не удалось изменить количество");
+    } finally {
+      setPendingId(null);
+    }
   };
   return (
     <section className="screen">
@@ -236,7 +258,7 @@ function InventoryScreen({ items, setItems, onAdd }: { items: InventoryItem[]; s
         {visible.map((item) => (
           <article className="inventory-item" key={item.id}>
             <span className="food-icon">{item.icon}</span>
-            <div className="item-main"><b>{item.name}</b><span>{item.storage} · {item.expiry}</span><div className="quantity-control"><button onClick={() => adjust(item.id, -1)} aria-label={`Уменьшить ${item.name}`}><Minus size={15} /></button><strong>{item.quantity} {item.unit}</strong><button onClick={() => adjust(item.id, 1)} aria-label={`Увеличить ${item.name}`}><Plus size={15} /></button></div></div>
+            <div className="item-main"><b>{item.name}</b><span>{item.storage} · {item.expiry}</span><div className="quantity-control"><button disabled={pendingId === item.id} onClick={() => void adjust(item.id, -1)} aria-label={`Уменьшить ${item.name}`}><Minus size={15} /></button><strong>{item.quantity} {item.unit}</strong><button disabled={pendingId === item.id} onClick={() => void adjust(item.id, 1)} aria-label={`Увеличить ${item.name}`}><Plus size={15} /></button></div></div>
           </article>
         ))}
         {!visible.length && <EmptyState icon={<Search />} title="Ничего не найдено" text="Измените запрос или место хранения" />}
@@ -370,19 +392,22 @@ function StepperRow({ label, value, icon, onDecrease, onIncrease, decreaseDisabl
 }
 function OptionSection({ title, children }: { title: string; children: React.ReactNode }) { return <div className="option-section"><h3>{title}</h3>{children}</div>; }
 
-function AddProductSheet({ onClose, onAdd }: { onClose: () => void; onAdd: (item: InventoryItem) => void }) {
+function AddProductSheet({ onClose, onAdd }: { onClose: () => void; onAdd: (item: InventoryItem) => Promise<boolean> }) {
   const [mode, setMode] = useState<"manual" | "photo" | "receipt">("manual");
+  const [saving, setSaving] = useState(false);
   const name = useRef<HTMLInputElement>(null);
   const quantity = useRef<HTMLInputElement>(null);
   const unit = useRef<HTMLSelectElement>(null);
   const storage = useRef<HTMLSelectElement>(null);
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
-    onAdd({ id: crypto.randomUUID(), name: name.current?.value || "Новый продукт", quantity: Number(quantity.current?.value || 1), unit: (unit.current?.value || "г") as InventoryItem["unit"], storage: (storage.current?.value || "Холодильник") as Storage, expiry: "срок не указан", icon: "🥬" });
+    setSaving(true);
+    const saved = await onAdd({ id: crypto.randomUUID(), name: name.current?.value || "Новый продукт", quantity: Number(quantity.current?.value || 1), unit: (unit.current?.value || "г") as InventoryItem["unit"], storage: (storage.current?.value || "Холодильник") as Storage, expiry: "срок не указан", icon: "🥬" });
+    if (!saved) setSaving(false);
   };
   return <div className="overlay" role="dialog" aria-modal="true"><div className="sheet"><div className="sheet-handle" /><div className="sheet-title"><div><p className="eyebrow">НОВАЯ ПОЗИЦИЯ</p><h2>Добавить продукт</h2></div><button className="icon-button" onClick={onClose} aria-label="Закрыть"><X /></button></div>
     <div className="input-modes"><button className={mode === "manual" ? "active" : ""} onClick={() => setMode("manual")}><Plus />Вручную</button><button className={mode === "photo" ? "active" : ""} onClick={() => setMode("photo")}><Camera />Фото</button><button className={mode === "receipt" ? "active" : ""} onClick={() => setMode("receipt")}><ReceiptText />Чек</button></div>
-    {mode === "manual" ? <form onSubmit={submit} className="product-form"><label><span>Название</span><input ref={name} required placeholder="Например, авокадо" autoFocus /></label><div className="form-split"><label><span>Количество</span><input ref={quantity} type="number" min="0.01" step="0.01" required placeholder="500" /></label><label><span>Единица</span><select ref={unit} defaultValue="г"><option>г</option><option>мл</option><option>шт</option></select></label></div><label><span>Где хранится</span><select ref={storage} defaultValue="Холодильник"><option>Холодильник</option><option>Морозильник</option><option>Кладовая</option></select></label><button className="main-action" type="submit">Добавить в запасы</button></form> : <label className="upload-zone"><input type="file" accept="image/*" capture="environment" /><Camera size={30} /><b>{mode === "receipt" ? "Сфотографировать чек" : "Сфотографировать упаковку"}</b><span>После распознавания вы проверите все данные</span></label>}
+    {mode === "manual" ? <form onSubmit={submit} className="product-form"><label><span>Название</span><input ref={name} required placeholder="Например, авокадо" autoFocus disabled={saving} /></label><div className="form-split"><label><span>Количество</span><input ref={quantity} type="number" min="0.01" step="0.01" required placeholder="500" disabled={saving} /></label><label><span>Единица</span><select ref={unit} defaultValue="г" disabled={saving}><option>г</option><option>мл</option><option>шт</option></select></label></div><label><span>Где хранится</span><select ref={storage} defaultValue="Холодильник" disabled={saving}><option>Холодильник</option><option>Морозильник</option><option>Кладовая</option></select></label><button className="main-action" type="submit" disabled={saving}>{saving ? "Сохраняем…" : "Добавить в запасы"}</button></form> : <label className="upload-zone"><input type="file" accept="image/*" capture="environment" /><Camera size={30} /><b>{mode === "receipt" ? "Сфотографировать чек" : "Сфотографировать упаковку"}</b><span>После распознавания вы проверите все данные</span></label>}
   </div></div>;
 }
 

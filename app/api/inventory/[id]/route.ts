@@ -11,7 +11,8 @@ export async function PATCH(request: Request, context: RouteContext<"/api/invent
   try {
     const { id } = await context.params;
     return NextResponse.json({ source: "supabase", quantity: await adjustInventoryItem(id, parsed.data.delta) });
-  } catch {
+  } catch (error) {
+    console.error("Inventory adjustment failed", error);
     return NextResponse.json({ error: { code: "DATABASE_UNAVAILABLE", message: "Не удалось изменить количество" } }, { status: 503 });
   }
 }

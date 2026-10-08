@@ -140,6 +140,7 @@ test("UI использует ответ модели и отправляет и
 
 test("добавление продукта передаёт выбранные единицу и место хранения", async ({ page }) => {
   let requestBody: Record<string, unknown> | null = null;
+  let patchUrl = "";
   await page.route("**/api/inventory", async (route) => {
     if (route.request().method() === "POST") {
       requestBody = route.request().postDataJSON();
@@ -147,6 +148,10 @@ test("добавление продукта передаёт выбранные 
       return;
     }
     await route.continue();
+  });
+  await page.route("**/api/inventory/test-id", async (route) => {
+    patchUrl = route.request().url();
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", quantity: 800 }) });
   });
 
   await page.getByRole("button", { name: "Добавить продукты" }).click();
@@ -156,6 +161,30 @@ test("добавление продукта передаёт выбранные 
   await page.getByLabel("Где хранится").selectOption("Морозильник");
   await page.getByRole("button", { name: "Добавить в запасы" }).click();
 
-  await expect(page.getByRole("status")).toContainText("Продукт добавлен");
+  await expect(page.getByRole("status")).toContainText("Продукт сохранён");
   expect(requestBody).toMatchObject({ name: "Молоко", quantity: 750, unit: "мл", storage: "Морозильник" });
+
+  await page.getByRole("button", { name: "Запасы", exact: true }).click();
+  const milk = page.getByText("Молоко", { exact: true }).locator("xpath=ancestor::article");
+  await milk.getByRole("button", { name: "Увеличить Молоко" }).click();
+  await expect(milk.locator(".quantity-control strong")).toHaveText("800 мл");
+  expect(patchUrl).toContain("/api/inventory/test-id");
+});
+
+test("ошибка API не выдаётся за успешное сохранение продукта", async ({ page }) => {
+  await page.route("**/api/inventory", async (route) => {
+    if (route.request().method() === "POST") {
+      await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { message: "База недоступна" } }) });
+      return;
+    }
+    await route.continue();
+  });
+
+  await page.getByRole("button", { name: "Добавить продукты" }).click();
+  await page.getByPlaceholder("Например, авокадо").fill("Тестовый продукт");
+  await page.getByPlaceholder("500").fill("1");
+  await page.getByRole("button", { name: "Добавить в запасы" }).click();
+
+  await expect(page.locator(".toast")).toContainText("База недоступна");
+  await expect(page.getByRole("heading", { name: "Добавить продукт" })).toBeVisible();
 });

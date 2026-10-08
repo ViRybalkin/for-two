@@ -5,7 +5,8 @@ export async function GET() {
   if (!isSupabaseConfigured()) return NextResponse.json({ source: "demo", items: [] });
   try {
     return NextResponse.json({ source: "supabase", items: await listInventory() });
-  } catch {
+  } catch (error) {
+    console.error("Inventory list failed", error);
     return NextResponse.json({ error: { code: "DATABASE_UNAVAILABLE", message: "Не удалось загрузить запасы" } }, { status: 503 });
   }
 }
@@ -16,7 +17,8 @@ export async function POST(request: Request) {
   if (!isSupabaseConfigured()) return NextResponse.json({ source: "demo", id: crypto.randomUUID() });
   try {
     return NextResponse.json({ source: "supabase", id: await addInventoryItem(parsed.data) }, { status: 201 });
-  } catch {
+  } catch (error) {
+    console.error("Inventory create failed", error);
     return NextResponse.json({ error: { code: "DATABASE_UNAVAILABLE", message: "Не удалось сохранить продукт" } }, { status: 503 });
   }
 }
