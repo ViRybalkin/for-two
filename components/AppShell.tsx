@@ -97,6 +97,12 @@ export function AppShell() {
         if (data?.source === "supabase" && Array.isArray(data.items)) setInventory(data.items);
       })
       .catch(() => null);
+    void fetch("/api/shopping")
+      .then((response) => response.ok ? response.json() : null)
+      .then((data) => {
+        if (data?.source === "supabase" && Array.isArray(data.items)) setShopping(data.items);
+      })
+      .catch(() => null);
   }, []);
 
   useEffect(() => {
@@ -152,10 +158,20 @@ export function AppShell() {
       }} />}
       {sheet === "settings" && <SettingsSheet onClose={() => setSheet(null)} notify={notify} />}
       {sheet === "recipe" && <RecipeView onClose={() => setSheet(null)} notify={notify} />}
-      {sheet === "catalog" && <CatalogSearchSheet onClose={() => setSheet(null)} onAdd={(product) => {
-        setShopping((old) => [{ id: crypto.randomUUID(), name: product.originalName, detail: product.packageText || "фасовка не указана", price: product.priceThb || 0, bought: false, store: product.store === "tops" ? "Tops" : "Makro" }, ...old]);
-        setSheet(null);
-        notify("Товар добавлен в список покупок");
+      {sheet === "catalog" && <CatalogSearchSheet onClose={() => setSheet(null)} onAdd={async (product) => {
+        const item = { id: crypto.randomUUID(), name: product.originalName, detail: product.packageText || "фасовка не указана", price: product.priceThb || 0, bought: false, store: (product.store === "tops" ? "Tops" : "Makro") as ShoppingItem["store"] };
+        try {
+          const response = await fetch("/api/shopping", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(item) });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data?.error?.message || "Не удалось добавить покупку");
+          setShopping((old) => [{ ...item, id: data.id || item.id }, ...old]);
+          setSheet(null);
+          notify("Товар сохранён в списке покупок");
+          return true;
+        } catch (error) {
+          notify(error instanceof Error ? error.message : "Не удалось добавить покупку");
+          return false;
+        }
       }} />}
       {toast && <div className="toast" role="status"><Check size={18} />{toast}</div>}
     </main>
@@ -368,19 +384,51 @@ function GeneratedMenu({ plan, onRecipe, onReset, onSave, saving, mode, notify }
 
 function ShoppingScreen({ items, setItems, notify, onSearch }: { items: ShoppingItem[]; setItems: React.Dispatch<React.SetStateAction<ShoppingItem[]>>; notify: (text: string) => void; onSearch: () => void }) {
   const [store, setStore] = useState<"Tops" | "Makro">("Tops");
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [completing, setCompleting] = useState(false);
   const visible = items.filter((item) => item.store === store);
   const done = visible.filter((item) => item.bought).length;
   const total = visible.reduce((sum, item) => sum + item.price, 0);
-  const toggle = (id: string) => setItems((old) => old.map((item) => item.id === id ? { ...item, bought: !item.bought } : item));
+  const toggle = async (id: string) => {
+    const item = items.find((entry) => entry.id === id);
+    if (!item) return;
+    const bought = !item.bought;
+    setPendingId(id);
+    setItems((old) => old.map((entry) => entry.id === id ? { ...entry, bought } : entry));
+    try {
+      const response = await fetch(`/api/shopping/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ bought }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error?.message || "Не удалось обновить покупку");
+    } catch (error) {
+      setItems((old) => old.map((entry) => entry.id === id ? { ...entry, bought: item.bought } : entry));
+      notify(error instanceof Error ? error.message : "Не удалось обновить покупку");
+    } finally {
+      setPendingId(null);
+    }
+  };
+  const complete = async () => {
+    setCompleting(true);
+    try {
+      const response = await fetch("/api/shopping", { method: "PUT" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error?.message || "Не удалось завершить покупки");
+      setItems([]);
+      notify("Покупки завершены и сохранены");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Не удалось завершить покупки");
+    } finally {
+      setCompleting(false);
+    }
+  };
   return (
     <section className="screen">
       <BrandHeader title="Покупки" subtitle="Список на 3 дня" action={<button className="icon-button" onClick={onSearch} aria-label="Найти товар в магазинах"><Plus /></button>} />
       <div className="store-tabs"><button className={store === "Tops" ? "active tops" : ""} onClick={() => setStore("Tops")}><span>T</span><b>Tops</b><small>{items.filter((i) => i.store === "Tops").length} товаров</small></button><button className={store === "Makro" ? "active makro" : ""} onClick={() => setStore("Makro")}><span>M</span><b>Makro</b><small>{items.filter((i) => i.store === "Makro").length} товаров</small></button></div>
-      <div className="shop-progress"><div><span>Собрано {done} из {visible.length}</span><b>≈ {total} ฿</b></div><div className="progress-track"><i style={{ width: `${(done / visible.length) * 100}%` }} /></div></div>
-      <div className="shopping-list">{visible.map((item) => <label key={item.id} className={item.bought ? "shopping-item bought" : "shopping-item"}><input type="checkbox" checked={item.bought} onChange={() => toggle(item.id)} /><span className="fake-check"><Check size={15} /></span><span><b>{item.name}</b><small>{item.detail}</small></span><strong>{item.price} ฿</strong></label>)}</div>
+      <div className="shop-progress"><div><span>Собрано {done} из {visible.length}</span><b>≈ {total} ฿</b></div><div className="progress-track"><i style={{ width: `${visible.length ? (done / visible.length) * 100 : 0}%` }} /></div></div>
+      <div className="shopping-list">{visible.map((item) => <label key={item.id} className={item.bought ? "shopping-item bought" : "shopping-item"}><input type="checkbox" checked={item.bought} disabled={pendingId === item.id} onChange={() => void toggle(item.id)} /><span className="fake-check"><Check size={15} /></span><span><b>{item.name}</b><small>{item.detail}</small></span><strong>{item.price} ฿</strong></label>)}{!visible.length && <EmptyState icon={<ShoppingBasket />} title="Список пуст" text="Добавьте товары из официальных каталогов" />}</div>
       <button className="scan-receipt" onClick={() => notify("Камера чека откроется после подключения хранилища")}><ReceiptText size={22} /><span><b>Загрузить чек</b><small>Сверим цены и обновим запасы</small></span><ChevronRight /></button>
       <div className="total-card"><span><small>Ориентировочно</small><b>{total} ฿</b></span><span><small>Осталось купить</small><b>{visible.filter((i) => !i.bought).reduce((sum, i) => sum + i.price, 0)} ฿</b></span></div>
-      <button className="main-action bottom-space" onClick={() => notify("Покупки сохранены")}>Завершить покупки</button>
+      <button className="main-action bottom-space" disabled={completing || items.length === 0} onClick={() => void complete()}>{completing ? "Сохраняем…" : "Завершить покупки"}</button>
     </section>
   );
 }
@@ -426,12 +474,13 @@ function AddProductSheet({ onClose, onAdd }: { onClose: () => void; onAdd: (item
   </div></div>;
 }
 
-function CatalogSearchSheet({ onClose, onAdd }: { onClose: () => void; onAdd: (product: CatalogProduct) => void }) {
+function CatalogSearchSheet({ onClose, onAdd }: { onClose: () => void; onAdd: (product: CatalogProduct) => Promise<boolean> }) {
   const [query, setQuery] = useState("");
   const [store, setStore] = useState<"all" | "tops" | "makro">("all");
   const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [savingUrl, setSavingUrl] = useState<string | null>(null);
 
   const search = async (event: FormEvent) => {
     event.preventDefault();
@@ -459,7 +508,7 @@ function CatalogSearchSheet({ onClose, onAdd }: { onClose: () => void; onAdd: (p
       <button className="main-action" type="submit" disabled={loading || query.trim().length < 2}>{loading ? <span className="spinner" /> : <Search size={19} />}{loading ? "Ищем на официальных сайтах…" : "Найти"}</button>
     </form>
     {message && <div className="catalog-message">{message}</div>}
-    <div className="catalog-results">{products.map((product) => <article key={`${product.store}-${product.url}`} className="catalog-item"><span className={product.store === "tops" ? "store-badge tops" : "store-badge makro"}>{product.store === "tops" ? "T" : "M"}</span><div><b>{product.originalName}</b><small>{product.packageText || "Фасовка не указана"}</small><a href={product.url} target="_blank" rel="noreferrer">Официальная страница</a></div><span className="catalog-price">{product.priceThb === null ? "Цена не указана" : `${product.priceThb} ฿`}<button onClick={() => onAdd(product)}>Добавить</button></span></article>)}</div>
+    <div className="catalog-results">{products.map((product) => <article key={`${product.store}-${product.url}`} className="catalog-item"><span className={product.store === "tops" ? "store-badge tops" : "store-badge makro"}>{product.store === "tops" ? "T" : "M"}</span><div><b>{product.originalName}</b><small>{product.packageText || "Фасовка не указана"}</small><a href={product.url} target="_blank" rel="noreferrer">Официальная страница</a></div><span className="catalog-price">{product.priceThb === null ? "Цена не указана" : `${product.priceThb} ฿`}<button disabled={savingUrl === product.url} onClick={async () => { setSavingUrl(product.url); const saved = await onAdd(product); if (!saved) setSavingUrl(null); }}>{savingUrl === product.url ? "Сохраняем…" : "Добавить"}</button></span></article>)}</div>
     <p className="fine-print">Цена и наличие ориентировочные до подтверждения покупки</p>
   </div></div>;
 }

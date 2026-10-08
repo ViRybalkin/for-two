@@ -63,6 +63,17 @@ test("локальные API валидируют данные и работаю
   const updatedSettings = await request.put("/api/settings", { data: { ...settingsData.settings, batchCookingEnabled: true } });
   expect(updatedSettings.ok()).toBe(true);
   expect(await updatedSettings.json()).toMatchObject({ source: "demo", settings: { batchCookingEnabled: true } });
+
+  const invalidShopping = await request.post("/api/shopping", { data: { name: "" } });
+  expect(invalidShopping.status()).toBe(400);
+  const shopping = await request.post("/api/shopping", { data: { name: "Рис", detail: "1 упаковка", price: 120, store: "Makro" } });
+  expect(shopping.status()).toBe(201);
+  const shoppingData = await shopping.json();
+  const checked = await request.patch(`/api/shopping/${shoppingData.id}`, { data: { bought: true } });
+  expect(checked.ok()).toBe(true);
+  expect(await checked.json()).toMatchObject({ source: "demo", bought: true });
+  const completed = await request.put("/api/shopping");
+  expect(completed.ok()).toBe(true);
 });
 
 test("запасы: добавление, изменение количества, поиск и сохранение после перезагрузки", async ({ page }) => {
