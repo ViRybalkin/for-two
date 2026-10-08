@@ -197,6 +197,23 @@ test("главный экран показывает сегодняшнее бл
   await expect(page.getByRole("dialog", { name: "Рецепт Карри с рисом" }).getByRole("heading", { name: "Карри с рисом" })).toBeVisible();
 });
 
+test("блок скоро использовать показывает только реальные запасы со сроком", async ({ page }) => {
+  let inventoryItems = [{ id: "avocado", name: "Авокадо", quantity: 4, unit: "г", storage: "Холодильник", expiry: "срок не указан", icon: "🥬" }];
+  await page.route("**/api/inventory", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", items: inventoryItems }) });
+  });
+  await page.reload();
+  await expect(page.getByText("Нет продуктов с указанным сроком")).toBeVisible();
+  await expect(page.getByText("Куриное филе", { exact: true })).toBeHidden();
+  await expect(page.getByText("Томаты черри", { exact: true })).toBeHidden();
+
+  inventoryItems = [{ id: "avocado", name: "Авокадо", quantity: 4, unit: "шт", storage: "Холодильник", expiry: "до 10 окт.", icon: "🥑" }];
+  await page.reload();
+  await expect(page.locator(".expiry-list").getByText("Авокадо", { exact: true })).toBeVisible();
+  await expect(page.locator(".expiry-list")).toContainText("4 шт");
+  await expect(page.locator(".expiry-list")).toContainText("до 10 окт.");
+});
+
 test("слайдер начинает с первого неприготовленного блюда", async ({ page }) => {
   let completed: string[] = [];
   const dishes = [

@@ -185,7 +185,7 @@ export function AppShell() {
   return (
     <main className="site-shell">
       <div className="phone-surface">
-        {tab === "today" && <TodayScreen savedPlan={savedPlan} onMenu={() => go("menu")} onInventory={() => go("inventory")} onRecipe={openRecipe} onAdd={() => setSheet("add")} onSettings={() => setSheet("settings")} notify={notify} />}
+        {tab === "today" && <TodayScreen savedPlan={savedPlan} inventory={inventory} onMenu={() => go("menu")} onInventory={() => go("inventory")} onRecipe={openRecipe} onAdd={() => setSheet("add")} onSettings={() => setSheet("settings")} notify={notify} />}
         {tab === "inventory" && <InventoryScreen items={inventory} setItems={setInventory} onAdd={() => setSheet("add")} notify={notify} />}
         {tab === "menu" && <MenuScreen inventory={inventory} setShopping={setShopping} savedPlan={savedPlan} onPlanSaved={setSavedPlan} onRecipe={openRecipe} notify={notify} />}
         {tab === "shopping" && <ShoppingScreen items={shopping} setItems={setShopping} notify={notify} onSearch={() => setSheet("catalog")} />}
@@ -249,7 +249,7 @@ function BrandHeader({ title, subtitle, action }: { title: string; subtitle?: st
   );
 }
 
-function TodayScreen({ savedPlan, onMenu, onInventory, onRecipe, onAdd, onSettings, notify }: { savedPlan: SavedMealPlan | null; onMenu: () => void; onInventory: () => void; onRecipe: (dish: MealDish) => void; onAdd: () => void; onSettings: () => void; notify: (text: string) => void }) {
+function TodayScreen({ savedPlan, inventory, onMenu, onInventory, onRecipe, onAdd, onSettings, notify }: { savedPlan: SavedMealPlan | null; inventory: InventoryItem[]; onMenu: () => void; onInventory: () => void; onRecipe: (dish: MealDish) => void; onAdd: () => void; onSettings: () => void; notify: (text: string) => void }) {
   const [slideIndex, setSlideIndex] = useState(0);
   const today = getBangkokDate();
   const todayDishes = savedPlan?.plan.dishes.filter((dish) => dish.date === today) || [];
@@ -260,6 +260,7 @@ function TodayScreen({ savedPlan, onMenu, onInventory, onRecipe, onAdd, onSettin
   const dish = slides[slideIndex % slides.length];
   const mealNames = { breakfast: "Завтрак", lunch: "Обед", dinner: "Ужин", snack: "Перекус" } as const;
   const currentDate = new Intl.DateTimeFormat("ru-RU", { timeZone: "Asia/Bangkok", weekday: "long", day: "numeric", month: "long" }).format(new Date());
+  const expiringItems = inventory.filter((item) => item.quantity > 0 && item.expiry !== "срок не указан").slice(0, 2);
   useEffect(() => setSlideIndex(0), [savedPlan?.id, today, completed.join("|")]);
   return (
     <section className="screen today-screen">
@@ -311,8 +312,12 @@ function TodayScreen({ savedPlan, onMenu, onInventory, onRecipe, onAdd, onSettin
 
       <div className="section-heading compact"><div><p className="eyebrow">СКОРО ИСПОЛЬЗОВАТЬ</p><h2>Не забудьте</h2></div><button className="text-button" onClick={onInventory}>Все <ChevronRight size={17} /></button></div>
       <div className="expiry-list">
-        <div className="expiry-icon">🍗</div><div><b>Куриное филе</b><span>620 г · холодильник</span></div><span className="warning-chip">2 дня</span>
-        <div className="expiry-icon">🍅</div><div><b>Томаты черри</b><span>280 г · холодильник</span></div><span className="warning-chip soft">3 дня</span>
+        {expiringItems.map((item, index) => <div className="expiry-item" key={item.id}>
+          <div className="expiry-icon">{item.icon}</div>
+          <div className="expiry-copy"><b>{item.name}</b><span>{item.quantity} {item.unit} · {item.storage.toLowerCase()}</span></div>
+          <span className={index === 0 ? "warning-chip" : "warning-chip soft"}>{item.expiry}</span>
+        </div>)}
+        {!expiringItems.length && <div className="expiry-empty"><Clock3 size={22} /><span><b>Нет продуктов с указанным сроком</b><small>Добавьте срок годности в запасах, и мы напомним вовремя</small></span></div>}
       </div>
     </section>
   );
