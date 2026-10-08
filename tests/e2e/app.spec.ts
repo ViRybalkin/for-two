@@ -140,6 +140,21 @@ test("экран ещё не показывает демонстрационны
   await expect(page.getByText("Приготовлен том-ям", { exact: true })).toBeHidden();
 });
 
+test("интерфейс не предлагает ещё не подключённые функции", async ({ page }) => {
+  await expect(page.getByText("Ввести название и количество", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Добавить продукты" }).click();
+  await expect(page.getByRole("button", { name: "Фото", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Чек", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Закрыть" }).click();
+
+  await page.getByRole("button", { name: "Меню", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Открыть календарь" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Ещё 17" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Покупки", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Загрузить чек" })).toHaveCount(0);
+});
+
 test("нет горизонтального переполнения на поддерживаемых ширинах", async ({ page }) => {
   for (const width of [320, 390, 430]) {
     await page.setViewportSize({ width, height: 844 });

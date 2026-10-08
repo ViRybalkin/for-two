@@ -24,10 +24,6 @@ test("все видимые кнопки доступны для клика во
 
   await page.getByRole("button", { name: "Добавить продукты" }).click();
   await expectVisibleButtonsActionable(page);
-  await page.getByRole("button", { name: "Фото", exact: true }).click();
-  await expectVisibleButtonsActionable(page);
-  await page.getByRole("button", { name: "Чек", exact: true }).click();
-  await expectVisibleButtonsActionable(page);
   await page.getByRole("button", { name: "Закрыть" }).click();
 
   await page.getByRole("button", { name: "Запасы", exact: true }).click();
@@ -56,7 +52,7 @@ test("все видимые кнопки доступны для клика во
   await expectVisibleButtonsActionable(page);
 });
 
-test("ранее пустые кнопки дают наблюдаемый результат", async ({ page }) => {
+test("рабочие элементы управления дают наблюдаемый результат", async ({ page }) => {
   const dish = { date: "2026-10-08", mealType: "dinner", title: "Тестовое карри", cookingMinutes: 25, difficulty: "easy", servings: 2, estimatedCostThb: 180, ingredients: [{ name: "Рис", quantity: 200, unit: "g", fromInventory: true }], instructions: ["Приготовить"], nutritionPerServing: { kcal: 450, proteinG: 20, fatG: 12, carbsG: 60, fiberG: 4 } };
   const plan = { title: "Меню на сегодня", summary: { days: 1, servings: 2, estimatedTotalThb: 180, inventoryCoveragePercent: 100, budgetWarning: null }, dishes: [dish], missingProducts: [] };
   const request = { mode: "inventory", days: 1, servings: 2, cuisines: ["тайская"], mealTypes: ["dinner"], inventory: [] };
@@ -74,9 +70,6 @@ test("ранее пустые кнопки дают наблюдаемый ре�
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", quantity: 650 }) });
   });
   await page.reload();
-
-  await page.getByRole("button", { name: "Добавить в любимые" }).click();
-  await expect(page.getByRole("status")).toContainText("добавлен в любимые");
 
   await page.getByRole("button", { name: "Общие настройки" }).click();
   await expect(page.getByRole("heading", { name: "Настройки меню" })).toBeVisible();
@@ -96,8 +89,6 @@ test("ранее пустые кнопки дают наблюдаемый ре�
 
   await page.getByRole("button", { name: "Меню", exact: true }).click();
   await page.getByRole("button", { name: "Изменить" }).click();
-  await page.getByRole("button", { name: "Открыть календарь" }).click();
-  await expect(page.locator(".toast")).toContainText("Период меню");
   const period = page.getByRole("group", { name: "Период" });
   await period.getByRole("button", { name: "Уменьшить период" }).click();
   await expect(period.locator("output")).toHaveText("2 дня");

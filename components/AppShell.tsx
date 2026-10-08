@@ -9,7 +9,6 @@ import "swiper/css/pagination";
 import {
   Archive,
   CalendarDays,
-  Camera,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -17,21 +16,17 @@ import {
   CircleDollarSign,
   Clock3,
   CookingPot,
-  Heart,
   Home,
   Minus,
   MoreHorizontal,
   Package,
   Plus,
-  ReceiptText,
   Refrigerator,
   Search,
   Settings,
   ShoppingBasket,
   SlidersHorizontal,
   Sparkles,
-  Star,
-  ThumbsDown,
   Utensils,
   WalletCards,
   X
@@ -157,7 +152,7 @@ export function AppShell() {
   return (
     <main className="site-shell">
       <div className="phone-surface">
-        {tab === "today" && <TodayScreen savedPlan={savedPlan} inventory={inventory} loading={planLoading} onMenu={() => go("menu")} onInventory={() => go("inventory")} onRecipe={openRecipe} onAdd={() => setSheet("add")} onSettings={() => setSheet("settings")} notify={notify} />}
+        {tab === "today" && <TodayScreen savedPlan={savedPlan} inventory={inventory} loading={planLoading} onMenu={() => go("menu")} onInventory={() => go("inventory")} onRecipe={openRecipe} onAdd={() => setSheet("add")} onSettings={() => setSheet("settings")} />}
         {tab === "inventory" && <InventoryScreen items={inventory} loading={inventoryLoading} setItems={setInventory} onAdd={() => setSheet("add")} notify={notify} />}
         {tab === "menu" && <MenuScreen inventory={inventory} setShopping={setShopping} savedPlan={savedPlan} onPlanSaved={setSavedPlan} onRecipe={openRecipe} notify={notify} />}
         {tab === "shopping" && <ShoppingScreen items={shopping} loading={shoppingLoading} setItems={setShopping} notify={notify} onSearch={() => setSheet("catalog")} />}
@@ -191,7 +186,7 @@ export function AppShell() {
         }
       }} />}
       {sheet === "settings" && <SettingsSheet onClose={() => setSheet(null)} notify={notify} />}
-      {sheet === "recipe" && selectedDish && <RecipeView dish={selectedDish} completed={Boolean(savedPlan?.completed.includes(getMealDishKey(selectedDish.date, selectedDish.mealType)))} onComplete={completeDish} onClose={() => setSheet(null)} notify={notify} />}
+      {sheet === "recipe" && selectedDish && <RecipeView dish={selectedDish} completed={Boolean(savedPlan?.completed.includes(getMealDishKey(selectedDish.date, selectedDish.mealType)))} onComplete={completeDish} onClose={() => setSheet(null)} />}
       {sheet === "catalog" && <CatalogSearchSheet onClose={() => setSheet(null)} onAdd={async (product) => {
         const item = { id: crypto.randomUUID(), name: product.originalName, detail: product.packageText || "фасовка не указана", price: product.priceThb || 0, bought: false, store: (product.store === "tops" ? "Tops" : "Makro") as ShoppingItem["store"] };
         try {
@@ -221,7 +216,7 @@ function BrandHeader({ title, subtitle, action }: { title: string; subtitle?: st
   );
 }
 
-function TodayScreen({ savedPlan, inventory, loading, onMenu, onInventory, onRecipe, onAdd, onSettings, notify }: { savedPlan: SavedMealPlan | null; inventory: InventoryItem[]; loading: boolean; onMenu: () => void; onInventory: () => void; onRecipe: (dish: MealDish) => void; onAdd: () => void; onSettings: () => void; notify: (text: string) => void }) {
+function TodayScreen({ savedPlan, inventory, loading, onMenu, onInventory, onRecipe, onAdd, onSettings }: { savedPlan: SavedMealPlan | null; inventory: InventoryItem[]; loading: boolean; onMenu: () => void; onInventory: () => void; onRecipe: (dish: MealDish) => void; onAdd: () => void; onSettings: () => void }) {
   const [slideIndex, setSlideIndex] = useState(0);
   const today = getBangkokDate();
   const todayDishes = savedPlan?.plan.dishes.filter((dish) => dish.date === today) || [];
@@ -257,7 +252,7 @@ function TodayScreen({ savedPlan, inventory, loading, onMenu, onInventory, onRec
               {specificPhoto ? <Image src="/pad-krapow.png" alt={slideDish.title} fill priority sizes="(max-width: 600px) 100vw, 560px" /> : <div className="meal-placeholder"><CookingPot size={74} /><span>Рецепт на сегодня</span></div>}
               <div className="hero-shade" />
               <button className="hero-open" onClick={() => onRecipe(slideDish)} aria-label={`Открыть рецепт ${slideDish.title}`} />
-              <div className="hero-top"><span className="meal-pill">{completedSlide ? "✓ Приготовлено" : `${mealNames[slideDish.mealType]} · сегодня`}</span><button className="round-glass" aria-label="Добавить в любимые" onClick={() => notify("Рецепт добавлен в любимые")}><Heart size={19} /></button></div>
+              <div className="hero-top"><span className="meal-pill">{completedSlide ? "✓ Приготовлено" : `${mealNames[slideDish.mealType]} · сегодня`}</span></div>
               <div className="hero-copy">
                 <p className="eyebrow light">СЕГОДНЯ ГОТОВИМ</p>
                 <h2>{slideDish.title}</h2>
@@ -278,7 +273,7 @@ function TodayScreen({ savedPlan, inventory, loading, onMenu, onInventory, onRec
       <div className="section-heading"><div><p className="eyebrow">БЫСТРЫЕ ДЕЙСТВИЯ</p><h2>Что делаем?</h2></div></div>
       <div className="quick-grid">
         <button className="quick-card primary" onClick={onMenu}><span className="quick-icon"><Sparkles size={22} /></span><b>Составить меню</b><small>Из запасов или магазинов</small></button>
-        <button className="quick-card" onClick={onAdd}><span className="quick-icon peach"><CirclePlus size={22} /></span><b>Добавить продукты</b><small>Вручную, фото или чек</small></button>
+        <button className="quick-card" onClick={onAdd}><span className="quick-icon peach"><CirclePlus size={22} /></span><b>Добавить продукты</b><small>Ввести название и количество</small></button>
       </div>
 
       <div className="section-heading compact"><div><p className="eyebrow">СКОРО ИСПОЛЬЗОВАТЬ</p><h2>Не забудьте</h2></div><button className="text-button" onClick={onInventory}>Все <ChevronRight size={17} /></button></div>
@@ -423,7 +418,7 @@ function MenuScreen({ inventory, setShopping, savedPlan, onPlanSaved, onRecipe, 
   };
   return (
     <section className="screen">
-      <BrandHeader title="Меню" subtitle="План питания на двоих" action={<button className="icon-button" aria-label="Открыть календарь" onClick={() => notify("Период меню меняется кнопками − и +")}><CalendarDays /></button>} />
+      <BrandHeader title="Меню" subtitle="План питания на двоих" />
       {!generated ? <>
         <div className="segment"><button className={mode === "inventory" ? "active" : ""} onClick={() => setMode("inventory")}><Refrigerator size={18} />Из запасов</button><button className={mode === "stores" ? "active" : ""} onClick={() => setMode("stores")}><ShoppingBasket size={18} />Из магазинов</button></div>
         <div className="form-card">
@@ -433,7 +428,7 @@ function MenuScreen({ inventory, setShopping, savedPlan, onPlanSaved, onRecipe, 
           {mode === "stores" && <StepperRow label="Бюджет" value={`${budget.toLocaleString("ru-RU")} ฿`} icon={<WalletCards size={19} />} onDecrease={() => setBudget((value) => Math.max(1000, value - 500))} onIncrease={() => setBudget((value) => Math.min(4000, value + 500))} decreaseDisabled={budget === 1000} increaseDisabled={budget === 4000} />}
         </div>
         <OptionSection title="Приёмы пищи"><div className="choice-wrap">{["Завтрак", "Обед", "Ужин", "Перекус"].map((meal) => <button key={meal} className={meals.includes(meal) ? "choice active" : "choice"} onClick={() => toggleMeal(meal)}>{meals.includes(meal) && <Check size={15} />}{meal}</button>)}</div></OptionSection>
-        <OptionSection title="Кухни"><div className="choice-wrap">{["Тайская", "Средиземноморская", "Японская"].map((cuisine) => <button key={cuisine} className={cuisines.includes(cuisine) ? "choice active" : "choice"} onClick={() => toggleCuisine(cuisine)}>{cuisines.includes(cuisine) && <Check size={15} />}{cuisine}</button>)}<button className="choice" onClick={() => notify("Дополнительные кухни появятся в следующем обновлении")}>Ещё 17</button></div></OptionSection>
+        <OptionSection title="Кухни"><div className="choice-wrap">{["Тайская", "Средиземноморская", "Японская"].map((cuisine) => <button key={cuisine} className={cuisines.includes(cuisine) ? "choice active" : "choice"} onClick={() => toggleCuisine(cuisine)}>{cuisines.includes(cuisine) && <Check size={15} />}{cuisine}</button>)}</div></OptionSection>
         <label className="wish-field"><span>Пожелание</span><textarea value={wish} onChange={(event) => setWish(event.target.value)} placeholder="Например: больше овощей, без острого…" /></label>
         <button className="main-action" disabled={loading || meals.length === 0 || cuisines.length === 0} onClick={generate}>{loading ? <span className="spinner" /> : <Sparkles size={20} />}{loading ? "Составляем меню…" : "Составить меню"}</button>
         <p className="fine-print">Результат можно изменить перед сохранением</p>
@@ -501,7 +496,6 @@ function ShoppingScreen({ items, loading, setItems, notify, onSearch }: { items:
       <div className="store-tabs"><button className={store === "Tops" ? "active tops" : ""} onClick={() => setStore("Tops")}><span>T</span><b>Tops</b><small>{items.filter((i) => i.store === "Tops").length} товаров</small></button><button className={store === "Makro" ? "active makro" : ""} onClick={() => setStore("Makro")}><span>M</span><b>Makro</b><small>{items.filter((i) => i.store === "Makro").length} товаров</small></button></div>
       <div className="shop-progress"><div><span>Собрано {done} из {visible.length}</span><b>≈ {total} ฿</b></div><div className="progress-track"><i style={{ width: `${visible.length ? (done / visible.length) * 100 : 0}%` }} /></div></div>
       <div className="shopping-list">{loading && <div className="catalog-message">Загружаем покупки…</div>}{visible.map((item) => <label key={item.id} className={item.bought ? "shopping-item bought" : "shopping-item"}><input type="checkbox" checked={item.bought} disabled={pendingId === item.id} onChange={() => void toggle(item.id)} /><span className="fake-check"><Check size={15} /></span><span><b>{item.name}</b><small>{item.detail}</small></span><strong>{item.price} ฿</strong></label>)}{!loading && !visible.length && <EmptyState icon={<ShoppingBasket />} title="Список пуст" text="Добавьте товары из официальных каталогов" />}</div>
-      <button className="scan-receipt" onClick={() => notify("Камера чека откроется после подключения хранилища")}><ReceiptText size={22} /><span><b>Загрузить чек</b><small>Сверим цены и обновим запасы</small></span><ChevronRight /></button>
       <div className="total-card"><span><small>Ориентировочно</small><b>{total} ฿</b></span><span><small>Осталось купить</small><b>{visible.filter((i) => !i.bought).reduce((sum, i) => sum + i.price, 0)} ฿</b></span></div>
       <button className="main-action bottom-space" disabled={completing || items.length === 0} onClick={() => void complete()}>{completing ? "Сохраняем…" : "Завершить покупки"}</button>
     </section>
@@ -530,7 +524,6 @@ function StepperRow({ label, value, icon, onDecrease, onIncrease, decreaseDisabl
 function OptionSection({ title, children }: { title: string; children: React.ReactNode }) { return <div className="option-section"><h3>{title}</h3>{children}</div>; }
 
 function AddProductSheet({ onClose, onAdd }: { onClose: () => void; onAdd: (item: InventoryItem) => Promise<boolean> }) {
-  const [mode, setMode] = useState<"manual" | "photo" | "receipt">("manual");
   const [saving, setSaving] = useState(false);
   const name = useRef<HTMLInputElement>(null);
   const quantity = useRef<HTMLInputElement>(null);
@@ -543,8 +536,7 @@ function AddProductSheet({ onClose, onAdd }: { onClose: () => void; onAdd: (item
     if (!saved) setSaving(false);
   };
   return <div className="overlay" role="dialog" aria-modal="true"><div className="sheet"><div className="sheet-handle" /><div className="sheet-title"><div><p className="eyebrow">НОВАЯ ПОЗИЦИЯ</p><h2>Добавить продукт</h2></div><button className="icon-button" onClick={onClose} aria-label="Закрыть"><X /></button></div>
-    <div className="input-modes"><button className={mode === "manual" ? "active" : ""} onClick={() => setMode("manual")}><Plus />Вручную</button><button className={mode === "photo" ? "active" : ""} onClick={() => setMode("photo")}><Camera />Фото</button><button className={mode === "receipt" ? "active" : ""} onClick={() => setMode("receipt")}><ReceiptText />Чек</button></div>
-    {mode === "manual" ? <form onSubmit={submit} className="product-form"><label><span>Название</span><input ref={name} required placeholder="Например, авокадо" autoFocus disabled={saving} /></label><div className="form-split"><label><span>Количество</span><input ref={quantity} type="number" min="0.01" step="0.01" required placeholder="500" disabled={saving} /></label><label><span>Единица</span><select ref={unit} defaultValue="г" disabled={saving}><option>г</option><option>мл</option><option>шт</option></select></label></div><label><span>Где хранится</span><select ref={storage} defaultValue="Холодильник" disabled={saving}><option>Холодильник</option><option>Морозильник</option><option>Кладовая</option></select></label><button className="main-action" type="submit" disabled={saving}>{saving ? "Сохраняем…" : "Добавить в запасы"}</button></form> : <label className="upload-zone"><input type="file" accept="image/*" capture="environment" /><Camera size={30} /><b>{mode === "receipt" ? "Сфотографировать чек" : "Сфотографировать упаковку"}</b><span>После распознавания вы проверите все данные</span></label>}
+    <form onSubmit={submit} className="product-form"><label><span>Название</span><input ref={name} required placeholder="Например, авокадо" autoFocus disabled={saving} /></label><div className="form-split"><label><span>Количество</span><input ref={quantity} type="number" min="0.01" step="0.01" required placeholder="500" disabled={saving} /></label><label><span>Единица</span><select ref={unit} defaultValue="г" disabled={saving}><option>г</option><option>мл</option><option>шт</option></select></label></div><label><span>Где хранится</span><select ref={storage} defaultValue="Холодильник" disabled={saving}><option>Холодильник</option><option>Морозильник</option><option>Кладовая</option></select></label><button className="main-action" type="submit" disabled={saving}>{saving ? "Сохраняем…" : "Добавить в запасы"}</button></form>
   </div></div>;
 }
 
@@ -631,7 +623,7 @@ function SettingsSheet({ onClose, notify }: { onClose: () => void; notify: (text
 
 function Toggle({ label, checked, setChecked }: { label: string; checked: boolean; setChecked: (v: boolean) => void }) { return <button type="button" className={checked ? "toggle on" : "toggle"} onClick={() => setChecked(!checked)} aria-label={label} aria-pressed={checked}><i /></button>; }
 
-function RecipeView({ dish, completed, onComplete, onClose, notify }: { dish: MealDish; completed: boolean; onComplete: (dish: MealDish) => Promise<void>; onClose: () => void; notify: (text: string) => void }) {
+function RecipeView({ dish, completed, onComplete, onClose }: { dish: MealDish; completed: boolean; onComplete: (dish: MealDish) => Promise<void>; onClose: () => void }) {
   const [servings, setServings] = useState(dish.servings);
   const [completing, setCompleting] = useState(false);
   const factor = servings / dish.servings;
@@ -639,13 +631,12 @@ function RecipeView({ dish, completed, onComplete, onClose, notify }: { dish: Me
   const difficultyNames = { easy: "Легко", medium: "Средне", hard: "Сложно" } as const;
   const unitNames = { g: "г", ml: "мл", piece: "шт" } as const;
   const hasSpecificPhoto = dish.title.toLowerCase().includes("пад крапао");
-  return <div className="full-overlay" role="dialog" aria-modal="true" aria-label={`Рецепт ${dish.title}`}><article className="recipe-view"><div className="recipe-photo">{hasSpecificPhoto ? <Image src="/pad-krapow.png" alt={dish.title} fill sizes="(max-width: 600px) 100vw, 600px" /> : <div className="meal-placeholder recipe-placeholder"><CookingPot size={82} /><span>{dish.title}</span></div>}<button className="round-glass back" onClick={onClose} aria-label="Закрыть рецепт"><ChevronLeft /></button><button className="round-glass favorite" onClick={() => notify("Рецепт добавлен в коллекцию")} aria-label="Сохранить рецепт"><Star /></button></div>
+  return <div className="full-overlay" role="dialog" aria-modal="true" aria-label={`Рецепт ${dish.title}`}><article className="recipe-view"><div className="recipe-photo">{hasSpecificPhoto ? <Image src="/pad-krapow.png" alt={dish.title} fill sizes="(max-width: 600px) 100vw, 600px" /> : <div className="meal-placeholder recipe-placeholder"><CookingPot size={82} /><span>{dish.title}</span></div>}<button className="round-glass back" onClick={onClose} aria-label="Закрыть рецепт"><ChevronLeft /></button></div>
       <div className="recipe-body"><p className="eyebrow">{mealNames[dish.mealType]} · {dish.date}</p><h1>{dish.title}</h1><p className="recipe-lead">Рецепт из сохранённого меню с точными ингредиентами и пошаговым приготовлением.</p><div className="recipe-facts"><span><Clock3 />{dish.cookingMinutes} мин</span><span><SlidersHorizontal />{difficultyNames[dish.difficulty]}</span><span><CircleDollarSign />≈ {Math.round(dish.estimatedCostThb / dish.servings)} ฿/порция</span></div>
       <div className="nutrition-row"><Metric value={`${Math.round(dish.nutritionPerServing.kcal)}`} label="ккал/порция" /><Metric value={`${Math.round(dish.nutritionPerServing.proteinG)} г`} label="белки" /><Metric value={`${Math.round(dish.nutritionPerServing.fatG)} г`} label="жиры" /><Metric value={`${Math.round(dish.nutritionPerServing.carbsG)} г`} label="углеводы" /></div>
       <div className="servings-control"><div><b>Порции</b><small>Ингредиенты пересчитаются</small></div><div><button onClick={() => setServings(Math.max(1, servings - 1))} aria-label="Уменьшить число порций"><Minus /></button><strong>{servings}</strong><button onClick={() => setServings(servings + 1)} aria-label="Увеличить число порций"><Plus /></button></div></div>
       <section className="recipe-section"><h2>Ингредиенты</h2>{dish.ingredients.map((ingredient) => <div className="ingredient" key={`${ingredient.name}-${ingredient.unit}`}><span>{ingredient.name}{ingredient.fromInventory ? <small> · из запасов</small> : null}</span><b>{Math.round(ingredient.quantity * factor * 10) / 10} {unitNames[ingredient.unit]}</b></div>)}</section>
       <section className="recipe-section steps"><h2>Как приготовить</h2>{dish.instructions.map((instruction, index) => <div key={`${index}-${instruction}`}><span>{index + 1}</span><p>{instruction}</p></div>)}</section>
-      <div className="feedback"><button onClick={() => notify("Будем предлагать чаще")}><Heart />Нравится</button><button onClick={() => notify("Рецепт больше не появится")}><ThumbsDown />Не моё</button><button onClick={() => notify("Сохранено в коллекцию")}><Star />Сохранить</button></div>
       <button className="main-action" disabled={completed || completing} onClick={async () => { setCompleting(true); await onComplete(dish); setCompleting(false); }}><CookingPot />{completed ? "Уже приготовлено" : completing ? "Сохраняем…" : "Приготовлено"}</button>
     </div>
   </article></div>;
