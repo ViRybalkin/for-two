@@ -47,10 +47,16 @@ type InventoryItem = {
   expiry: string;
   icon: string;
 };
+type NewInventoryItem = InventoryItem & { expiryDate: string | null };
 type ShoppingItem = { id: string; name: string; detail: string; price: number; bought: boolean; store: "Tops" | "Makro" };
 type CatalogProduct = { store: "tops" | "makro"; originalName: string; packageText: string | null; priceThb: number | null; url: string; availability: string; checkedAt: string };
 type MealDish = GeneratedMealPlan["dishes"][number];
 type SavedMealPlan = { id: string; mode: "inventory" | "stores"; request: MealPlanRequest; plan: GeneratedMealPlan; completed: string[] };
+
+function formatExpiryDate(expiryDate: string | null) {
+  if (!expiryDate) return "срок не указан";
+  return `до ${new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${expiryDate}T00:00:00Z`))}`;
+}
 
 const nav = [
   { id: "today" as const, label: "Сегодня", icon: Home },
@@ -173,7 +179,7 @@ export function AppShell() {
 
       {sheet === "add" && <AddProductSheet onClose={() => setSheet(null)} onAdd={async (item) => {
         try {
-          const response = await fetch("/api/inventory", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: item.name, quantity: item.quantity, unit: item.unit, storage: item.storage, expiryDate: null }) });
+          const response = await fetch("/api/inventory", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: item.name, quantity: item.quantity, unit: item.unit, storage: item.storage, expiryDate: item.expiryDate }) });
           const data = await response.json();
           if (!response.ok) throw new Error(data?.error?.message || "Не удалось сохранить продукт");
           setInventory((old) => [{ ...item, id: data.id || item.id }, ...old]);
@@ -523,20 +529,22 @@ function StepperRow({ label, value, icon, onDecrease, onIncrease, decreaseDisabl
 }
 function OptionSection({ title, children }: { title: string; children: React.ReactNode }) { return <div className="option-section"><h3>{title}</h3>{children}</div>; }
 
-function AddProductSheet({ onClose, onAdd }: { onClose: () => void; onAdd: (item: InventoryItem) => Promise<boolean> }) {
+function AddProductSheet({ onClose, onAdd }: { onClose: () => void; onAdd: (item: NewInventoryItem) => Promise<boolean> }) {
   const [saving, setSaving] = useState(false);
   const name = useRef<HTMLInputElement>(null);
   const quantity = useRef<HTMLInputElement>(null);
   const unit = useRef<HTMLSelectElement>(null);
   const storage = useRef<HTMLSelectElement>(null);
+  const expiryDate = useRef<HTMLInputElement>(null);
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    const saved = await onAdd({ id: crypto.randomUUID(), name: name.current?.value || "Новый продукт", quantity: Number(quantity.current?.value || 1), unit: (unit.current?.value || "г") as InventoryItem["unit"], storage: (storage.current?.value || "Холодильник") as Storage, expiry: "срок не указан", icon: "🥬" });
+    const selectedExpiryDate = expiryDate.current?.value || null;
+    const saved = await onAdd({ id: crypto.randomUUID(), name: name.current?.value || "Новый продукт", quantity: Number(quantity.current?.value || 1), unit: (unit.current?.value || "г") as InventoryItem["unit"], storage: (storage.current?.value || "Холодильник") as Storage, expiryDate: selectedExpiryDate, expiry: formatExpiryDate(selectedExpiryDate), icon: "🥬" });
     if (!saved) setSaving(false);
   };
   return <div className="overlay" role="dialog" aria-modal="true"><div className="sheet"><div className="sheet-handle" /><div className="sheet-title"><div><p className="eyebrow">НОВАЯ ПОЗИЦИЯ</p><h2>Добавить продукт</h2></div><button className="icon-button" onClick={onClose} aria-label="Закрыть"><X /></button></div>
-    <form onSubmit={submit} className="product-form"><label><span>Название</span><input ref={name} required placeholder="Например, авокадо" autoFocus disabled={saving} /></label><div className="form-split"><label><span>Количество</span><input ref={quantity} type="number" min="0.01" step="0.01" required placeholder="500" disabled={saving} /></label><label><span>Единица</span><select ref={unit} defaultValue="г" disabled={saving}><option>г</option><option>мл</option><option>шт</option></select></label></div><label><span>Где хранится</span><select ref={storage} defaultValue="Холодильник" disabled={saving}><option>Холодильник</option><option>Морозильник</option><option>Кладовая</option></select></label><button className="main-action" type="submit" disabled={saving}>{saving ? "Сохраняем…" : "Добавить в запасы"}</button></form>
+    <form onSubmit={submit} className="product-form"><label><span>Название</span><input ref={name} required placeholder="Например, авокадо" autoFocus disabled={saving} /></label><div className="form-split"><label><span>Количество</span><input ref={quantity} type="number" min="0.01" step="0.01" required placeholder="500" disabled={saving} /></label><label><span>Единица</span><select ref={unit} defaultValue="г" disabled={saving}><option>г</option><option>мл</option><option>шт</option></select></label></div><label><span>Где хранится</span><select ref={storage} defaultValue="Холодильник" disabled={saving}><option>Холодильник</option><option>Морозильник</option><option>Кладовая</option></select></label><label><span>Срок годности <small>необязательно</small></span><input ref={expiryDate} type="date" disabled={saving} /></label><button className="main-action" type="submit" disabled={saving}>{saving ? "Сохраняем…" : "Добавить в запасы"}</button></form>
   </div></div>;
 }
 

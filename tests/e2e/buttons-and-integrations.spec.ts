@@ -303,13 +303,15 @@ test("добавление продукта передаёт выбранные 
   await page.getByPlaceholder("500").fill("750");
   await page.getByLabel("Единица").selectOption("мл");
   await page.getByLabel("Где хранится").selectOption("Морозильник");
+  await page.getByLabel(/Срок годности/).fill("2026-10-10");
   await page.getByRole("button", { name: "Добавить в запасы" }).click();
 
   await expect(page.getByRole("status")).toContainText("Продукт сохранён");
-  expect(requestBody).toMatchObject({ name: "Молоко", quantity: 750, unit: "мл", storage: "Морозильник" });
+  expect(requestBody).toMatchObject({ name: "Молоко", quantity: 750, unit: "мл", storage: "Морозильник", expiryDate: "2026-10-10" });
 
   await page.getByRole("button", { name: "Запасы", exact: true }).click();
   const milk = page.getByText("Молоко", { exact: true }).locator("xpath=ancestor::article");
+  await expect(milk).toContainText("до 10 окт.");
   await milk.getByRole("button", { name: "Увеличить Молоко" }).click();
   await expect(milk.locator(".quantity-control strong")).toHaveText("800 мл");
   expect(patchUrl).toContain("/api/inventory/test-id");
