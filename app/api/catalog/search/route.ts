@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { catalogSearchRequestSchema, searchOfficialCatalog } from "@/lib/services/catalog-search";
+import { configurationError, isDemoMode } from "@/lib/runtime-mode";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -19,7 +20,9 @@ export async function GET(request: Request) {
   }
 
   if (!process.env.OPENAI_API_KEY) {
-    return NextResponse.json({ products: [], source: "demo", message: "Поиск будет доступен после подключения OpenAI" });
+    return isDemoMode()
+      ? NextResponse.json({ products: [], source: "demo", message: "Поиск будет доступен после подключения OpenAI" })
+      : NextResponse.json(configurationError, { status: 503 });
   }
 
   try {

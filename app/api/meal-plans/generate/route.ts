@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { generateMealPlan } from "@/lib/services/generate-meal-plan";
 import { mealPlanRequestSchema } from "@/lib/schemas/meal-plan";
 import { createDemoMealPlan } from "@/lib/demo-meal-plan";
+import { configurationError, isDemoMode } from "@/lib/runtime-mode";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -16,6 +17,7 @@ export async function POST(request: Request) {
   }
 
   if (!process.env.OPENAI_API_KEY) {
+    if (!isDemoMode()) return NextResponse.json(configurationError, { status: 503 });
     const plan = createDemoMealPlan(parsed.data);
     return NextResponse.json({
       id: crypto.randomUUID(),

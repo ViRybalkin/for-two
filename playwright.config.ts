@@ -28,7 +28,8 @@ export default defineConfig({
     env: {
       OPENAI_API_KEY: "",
       SUPABASE_URL: "",
-      SUPABASE_SECRET_KEY: ""
+      SUPABASE_SECRET_KEY: "",
+      APP_ENABLE_DEMO_MODE: "true"
     },
     reuseExistingServer: true,
     timeout: 30_000,

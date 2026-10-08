@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { isSupabaseConfigured } from "@/lib/services/inventory-repository";
 import { listMealPlans, saveMealPlan, saveMealPlanSchema } from "@/lib/services/meal-plan-repository";
+import { configurationError, isDemoMode } from "@/lib/runtime-mode";
 
 export async function GET() {
-  if (!isSupabaseConfigured()) return NextResponse.json({ source: "demo", items: [] });
+  if (!isSupabaseConfigured()) return isDemoMode() ? NextResponse.json({ source: "demo", items: [] }) : NextResponse.json(configurationError, { status: 503 });
   try {
     return NextResponse.json({ source: "supabase", items: await listMealPlans() });
   } catch (error) {
@@ -15,7 +16,7 @@ export async function GET() {
 export async function POST(request: Request) {
   const parsed = saveMealPlanSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: { code: "VALIDATION_ERROR", message: "Некорректное меню" } }, { status: 400 });
-  if (!isSupabaseConfigured()) return NextResponse.json({ source: "demo", id: crypto.randomUUID() }, { status: 201 });
+  if (!isSupabaseConfigured()) return isDemoMode() ? NextResponse.json({ source: "demo", id: crypto.randomUUID() }, { status: 201 }) : NextResponse.json(configurationError, { status: 503 });
   try {
     return NextResponse.json({ source: "supabase", id: await saveMealPlan(parsed.data) }, { status: 201 });
   } catch (error) {
