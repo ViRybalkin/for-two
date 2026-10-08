@@ -39,6 +39,9 @@ button, a { -webkit-tap-highlight-color: transparent; }
 
 .hero-card { min-height: 410px; position: relative; overflow: hidden; border-radius: 29px; color: white; cursor: pointer; box-shadow: 0 20px 40px rgba(16,46,38,.2); }
 .hero-card img, .recipe-photo img { object-fit: cover; }
+.meal-placeholder { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 42px; text-align: center; color: #fff; background: radial-gradient(circle at 30% 20%, #d79561, transparent 42%), linear-gradient(145deg, #244f43, #102d27); }
+.meal-placeholder span { max-width: 340px; font-size: 17px; font-weight: 750; line-height: 1.3; }
+.recipe-placeholder { position: absolute; }
 .hero-shade { position: absolute; inset: 0; background: linear-gradient(to top, rgba(8,27,21,.88) 0%, rgba(8,27,21,.07) 65%); }
 .hero-open { position: absolute; z-index: 1; inset: 0; width: 100%; border: 0; background: transparent; cursor: pointer; }
 .hero-top { position: absolute; z-index: 2; left: 17px; right: 17px; top: 17px; display: flex; justify-content: space-between; align-items: center; pointer-events: none; }

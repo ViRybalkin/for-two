@@ -169,9 +169,32 @@ test("сохранённое меню загружается, а недоста�
     await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ source: "supabase", id: "saved-plan", shoppingItems: [{ id: "rice", name: "Рис", detail: "200 g", price: 300, bought: false, store: "Tops" }] }) });
   });
 
+  await page.reload();
   await page.getByRole("button", { name: "Меню", exact: true }).click();
   await expect(page.getByText("Карри с рисом", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Меню сохранено" })).toBeDisabled();
+  await page.getByRole("button", { name: /Ужин Карри с рисом/ }).click();
+  await expect(page.getByRole("heading", { name: "Карри с рисом" })).toBeVisible();
+  await expect(page.getByText("Рис", { exact: true })).toBeVisible();
+  await expect(page.getByText("Приготовить", { exact: true })).toBeVisible();
+});
+
+test("главный экран показывает сегодняшнее блюдо из сохранённого меню", async ({ page }) => {
+  const plan = {
+    title: "Меню на сегодня",
+    summary: { days: 1, servings: 2, estimatedTotalThb: 300, inventoryCoveragePercent: 0, budgetWarning: null },
+    dishes: [{ date: "2026-10-08", mealType: "dinner", title: "Карри с рисом", cookingMinutes: 30, difficulty: "easy", servings: 2, estimatedCostThb: 300, ingredients: [{ name: "Рис", quantity: 200, unit: "g", fromInventory: false }], instructions: ["Приготовить"], nutritionPerServing: { kcal: 500, proteinG: 20, fatG: 15, carbsG: 70, fiberG: 4 } }],
+    missingProducts: [{ name: "Рис", quantity: 200, unit: "g" }]
+  };
+  const request = { mode: "stores", days: 1, servings: 2, budgetThb: 1000, cuisines: ["тайская"], mealTypes: ["dinner"], inventory: [] };
+  await page.route("**/api/meal-plans", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", items: [{ id: "saved-plan", mode: "stores", request, plan }] }) });
+  });
+
+  await page.reload();
+  await expect(page.getByText("Карри с рисом", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Открыть рецепт Карри с рисом" }).click();
+  await expect(page.getByRole("dialog", { name: "Рецепт Карри с рисом" }).getByRole("heading", { name: "Карри с рисом" })).toBeVisible();
 });
 
 test("сохранение нового меню из магазинов обновляет покупки", async ({ page }) => {
