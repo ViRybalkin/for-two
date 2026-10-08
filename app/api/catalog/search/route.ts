@@ -25,7 +25,8 @@ export async function GET(request: Request) {
   try {
     const products = await searchOfficialCatalog(parsed.data);
     return NextResponse.json({ products, source: "official_pages" });
-  } catch {
+  } catch (error) {
+    console.error("Catalog search failed", error);
     return NextResponse.json(
       { error: { code: "CATALOG_UNAVAILABLE", message: "Магазин временно недоступен. Попробуйте позже." } },
       { status: 503 }

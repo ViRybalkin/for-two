@@ -47,6 +47,11 @@ type InventoryItem = {
 };
 type ShoppingItem = { id: string; name: string; detail: string; price: number; bought: boolean; store: "Tops" | "Makro" };
 type CatalogProduct = { store: "tops" | "makro"; originalName: string; packageText: string | null; priceThb: number | null; url: string; availability: string; checkedAt: string };
+type GeneratedDish = { date: string; mealType: "breakfast" | "lunch" | "dinner" | "snack"; title: string; cookingMinutes: number };
+type GeneratedPlan = {
+  summary: { estimatedTotalThb: number; inventoryCoveragePercent: number; budgetWarning: string | null };
+  dishes: GeneratedDish[];
+};
 
 const initialInventory: InventoryItem[] = [
   { id: "1", name: "Куриное филе", quantity: 620, unit: "г", storage: "Холодильник", expiry: "осталось 2 дня", icon: "🍗" },
@@ -116,7 +121,7 @@ export function AppShell() {
   return (
     <main className="site-shell">
       <div className="phone-surface">
-        {tab === "today" && <TodayScreen onMenu={() => go("menu")} onRecipe={() => setSheet("recipe")} onAdd={() => setSheet("add")} />}
+        {tab === "today" && <TodayScreen onMenu={() => go("menu")} onInventory={() => go("inventory")} onRecipe={() => setSheet("recipe")} onAdd={() => setSheet("add")} onSettings={() => setSheet("settings")} notify={notify} />}
         {tab === "inventory" && <InventoryScreen items={inventory} setItems={setInventory} onAdd={() => setSheet("add")} />}
         {tab === "menu" && <MenuScreen inventory={inventory} onRecipe={() => setSheet("recipe")} notify={notify} />}
         {tab === "shopping" && <ShoppingScreen items={shopping} setItems={setShopping} notify={notify} onSearch={() => setSheet("catalog")} />}
@@ -162,16 +167,17 @@ function BrandHeader({ title, subtitle, action }: { title: string; subtitle?: st
   );
 }
 
-function TodayScreen({ onMenu, onRecipe, onAdd }: { onMenu: () => void; onRecipe: () => void; onAdd: () => void }) {
+function TodayScreen({ onMenu, onInventory, onRecipe, onAdd, onSettings, notify }: { onMenu: () => void; onInventory: () => void; onRecipe: () => void; onAdd: () => void; onSettings: () => void; notify: (text: string) => void }) {
   return (
     <section className="screen today-screen">
-      <BrandHeader title="Доброе утро" subtitle="Среда, 8 октября" action={<button className="avatar" aria-label="Общие настройки">В + Д</button>} />
+      <BrandHeader title="Доброе утро" subtitle="Среда, 8 октября" action={<button className="avatar" aria-label="Общие настройки" onClick={onSettings}>В + Д</button>} />
       <div className="location-chip"><span>Пхукет</span><span>•</span><span>сегодня 3 приёма пищи</span></div>
 
-      <article className="hero-card" onClick={onRecipe} tabIndex={0} role="button" aria-label="Открыть рецепт Пад крапао">
+      <article className="hero-card">
         <Image src="/pad-krapow.png" alt="Пад крапао с жасминовым рисом" fill priority sizes="(max-width: 600px) 100vw, 560px" />
         <div className="hero-shade" />
-        <div className="hero-top"><span className="meal-pill">Ужин · 19:30</span><button className="round-glass" aria-label="Добавить в любимые"><Heart size={19} /></button></div>
+        <button className="hero-open" onClick={onRecipe} aria-label="Открыть рецепт Пад крапао" />
+        <div className="hero-top"><span className="meal-pill">Ужин · 19:30</span><button className="round-glass" aria-label="Добавить в любимые" onClick={() => notify("Рецепт добавлен в любимые")}><Heart size={19} /></button></div>
         <div className="hero-copy">
           <p className="eyebrow light">СЕГОДНЯ ГОТОВИМ</p>
           <h2>Пад крапао<br />с жасминовым рисом</h2>
@@ -192,7 +198,7 @@ function TodayScreen({ onMenu, onRecipe, onAdd }: { onMenu: () => void; onRecipe
         <button className="quick-card" onClick={onAdd}><span className="quick-icon peach"><CirclePlus size={22} /></span><b>Добавить продукты</b><small>Вручную, фото или чек</small></button>
       </div>
 
-      <div className="section-heading compact"><div><p className="eyebrow">СКОРО ИСПОЛЬЗОВАТЬ</p><h2>Не забудьте</h2></div><button className="text-button">Все <ChevronRight size={17} /></button></div>
+      <div className="section-heading compact"><div><p className="eyebrow">СКОРО ИСПОЛЬЗОВАТЬ</p><h2>Не забудьте</h2></div><button className="text-button" onClick={onInventory}>Все <ChevronRight size={17} /></button></div>
       <div className="expiry-list">
         <div className="expiry-icon">🍗</div><div><b>Куриное филе</b><span>620 г · холодильник</span></div><span className="warning-chip">2 дня</span>
         <div className="expiry-icon">🍅</div><div><b>Томаты черри</b><span>280 г · холодильник</span></div><span className="warning-chip soft">3 дня</span>
@@ -243,43 +249,82 @@ function MenuScreen({ inventory, onRecipe, notify }: { inventory: InventoryItem[
   const [mode, setMode] = useState<"inventory" | "stores">("inventory");
   const [generated, setGenerated] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [plan, setPlan] = useState<GeneratedPlan | null>(null);
+  const [days, setDays] = useState(3);
+  const [servings, setServings] = useState(2);
+  const [cookingMinutes, setCookingMinutes] = useState(45);
+  const [budget, setBudget] = useState(2000);
   const [meals, setMeals] = useState(["Завтрак", "Обед", "Ужин"]);
+  const [cuisines, setCuisines] = useState(["Тайская", "Средиземноморская"]);
+  const [wish, setWish] = useState("");
   const toggleMeal = (meal: string) => setMeals((old) => old.includes(meal) ? old.filter((item) => item !== meal) : [...old, meal]);
+  const toggleCuisine = (cuisine: string) => setCuisines((old) => old.includes(cuisine) ? old.filter((item) => item !== cuisine) : [...old, cuisine]);
   const generate = async () => {
     setLoading(true);
-    await fetch("/api/meal-plans/generate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode, days: 3, servings: 2, budgetThb: mode === "stores" ? 2000 : undefined, cuisines: ["тайская", "средиземноморская"], mealTypes: ["breakfast", "lunch", "dinner"], inventory: inventory.map(({ name, quantity, unit, expiry }) => ({ name, quantity, unit, expiry })) }) }).catch(() => null);
-    window.setTimeout(() => { setGenerated(true); setLoading(false); notify("Черновик меню готов"); }, 750);
+    try {
+      const response = await fetch("/api/meal-plans/generate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          mode,
+          days,
+          servings,
+          budgetThb: mode === "stores" ? budget : undefined,
+          cuisines: cuisines.map((item) => item.toLowerCase()),
+          mealTypes: meals.map((meal) => ({ "Завтрак": "breakfast", "Обед": "lunch", "Ужин": "dinner", "Перекус": "snack" })[meal]),
+          inventory: inventory.map(({ name, quantity, unit, expiry }) => ({ name, quantity, unit, expiry })),
+          wish: wish.trim() || undefined
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error?.message || "Не удалось составить меню");
+      setPlan(data.plan || null);
+      setGenerated(true);
+      notify(data.source === "openai" ? "Меню создано моделью OpenAI" : "Черновик меню готов");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Не удалось составить меню");
+    } finally {
+      setLoading(false);
+    }
   };
   return (
     <section className="screen">
-      <BrandHeader title="Меню" subtitle="План питания на двоих" action={<button className="icon-button"><CalendarDays /></button>} />
+      <BrandHeader title="Меню" subtitle="План питания на двоих" action={<button className="icon-button" aria-label="Открыть календарь" onClick={() => notify("Период меню меняется кнопками − и +")}><CalendarDays /></button>} />
       {!generated ? <>
         <div className="segment"><button className={mode === "inventory" ? "active" : ""} onClick={() => setMode("inventory")}><Refrigerator size={18} />Из запасов</button><button className={mode === "stores" ? "active" : ""} onClick={() => setMode("stores")}><ShoppingBasket size={18} />Из магазинов</button></div>
         <div className="form-card">
-          <FormRow label="Период" value="3 дня" icon={<CalendarDays size={19} />} />
-          <FormRow label="Порции" value="2 порции" icon={<Utensils size={19} />} />
-          <FormRow label="Время готовки" value="до 45 минут" icon={<Clock3 size={19} />} />
-          {mode === "stores" && <FormRow label="Бюджет" value="2 000 ฿" icon={<WalletCards size={19} />} />}
+          <StepperRow label="Период" value={`${days} ${days === 1 ? "день" : days < 5 ? "дня" : "дней"}`} icon={<CalendarDays size={19} />} onDecrease={() => setDays((value) => Math.max(1, value - 1))} onIncrease={() => setDays((value) => Math.min(7, value + 1))} decreaseDisabled={days === 1} increaseDisabled={days === 7} />
+          <StepperRow label="Порции" value={`${servings} ${servings === 1 ? "порция" : servings < 5 ? "порции" : "порций"}`} icon={<Utensils size={19} />} onDecrease={() => setServings((value) => Math.max(1, value - 1))} onIncrease={() => setServings((value) => Math.min(6, value + 1))} decreaseDisabled={servings === 1} increaseDisabled={servings === 6} />
+          <StepperRow label="Время готовки" value={`до ${cookingMinutes} минут`} icon={<Clock3 size={19} />} onDecrease={() => setCookingMinutes((value) => Math.max(30, value - 15))} onIncrease={() => setCookingMinutes((value) => Math.min(60, value + 15))} decreaseDisabled={cookingMinutes === 30} increaseDisabled={cookingMinutes === 60} />
+          {mode === "stores" && <StepperRow label="Бюджет" value={`${budget.toLocaleString("ru-RU")} ฿`} icon={<WalletCards size={19} />} onDecrease={() => setBudget((value) => Math.max(1000, value - 500))} onIncrease={() => setBudget((value) => Math.min(4000, value + 500))} decreaseDisabled={budget === 1000} increaseDisabled={budget === 4000} />}
         </div>
         <OptionSection title="Приёмы пищи"><div className="choice-wrap">{["Завтрак", "Обед", "Ужин", "Перекус"].map((meal) => <button key={meal} className={meals.includes(meal) ? "choice active" : "choice"} onClick={() => toggleMeal(meal)}>{meals.includes(meal) && <Check size={15} />}{meal}</button>)}</div></OptionSection>
-        <OptionSection title="Кухни"><div className="choice-wrap"><button className="choice active"><Check size={15} />Тайская</button><button className="choice active"><Check size={15} />Средиземноморская</button><button className="choice">Японская</button><button className="choice">Ещё 17</button></div></OptionSection>
-        <label className="wish-field"><span>Пожелание</span><textarea placeholder="Например: больше овощей, без острого…" /></label>
-        <button className="main-action" disabled={loading || meals.length === 0} onClick={generate}>{loading ? <span className="spinner" /> : <Sparkles size={20} />}{loading ? "Составляем меню…" : "Составить меню"}</button>
+        <OptionSection title="Кухни"><div className="choice-wrap">{["Тайская", "Средиземноморская", "Японская"].map((cuisine) => <button key={cuisine} className={cuisines.includes(cuisine) ? "choice active" : "choice"} onClick={() => toggleCuisine(cuisine)}>{cuisines.includes(cuisine) && <Check size={15} />}{cuisine}</button>)}<button className="choice" onClick={() => notify("Дополнительные кухни появятся в следующем обновлении")}>Ещё 17</button></div></OptionSection>
+        <label className="wish-field"><span>Пожелание</span><textarea value={wish} onChange={(event) => setWish(event.target.value)} placeholder="Например: больше овощей, без острого…" /></label>
+        <button className="main-action" disabled={loading || meals.length === 0 || cuisines.length === 0} onClick={generate}>{loading ? <span className="spinner" /> : <Sparkles size={20} />}{loading ? "Составляем меню…" : "Составить меню"}</button>
         <p className="fine-print">Результат можно изменить перед сохранением</p>
-      </> : <GeneratedMenu onRecipe={onRecipe} onReset={() => setGenerated(false)} mode={mode} notify={notify} />}
+      </> : <GeneratedMenu plan={plan} onRecipe={onRecipe} onReset={() => setGenerated(false)} mode={mode} notify={notify} />}
     </section>
   );
 }
 
-function GeneratedMenu({ onRecipe, onReset, mode, notify }: { onRecipe: () => void; onReset: () => void; mode: string; notify: (t: string) => void }) {
-  const days = [
+function GeneratedMenu({ plan, onRecipe, onReset, mode, notify }: { plan: GeneratedPlan | null; onRecipe: () => void; onReset: () => void; mode: string; notify: (t: string) => void }) {
+  const fallbackDays = [
     { date: "Сегодня · 8 окт.", meals: [["Завтрак", "Йогурт с манго и гранолой", "12 мин"], ["Обед", "Тёплый салат с курицей", "25 мин"], ["Ужин", "Пад крапао с рисом", "30 мин"]] },
     { date: "Завтра · 9 окт.", meals: [["Завтрак", "Омлет с томатами", "15 мин"], ["Обед", "Кокосовый суп с креветками", "35 мин"], ["Ужин", "Запечённая рыба с овощами", "40 мин"]] },
     { date: "Пятница · 10 окт.", meals: [["Завтрак", "Рисовая каша с бананом", "20 мин"], ["Обед", "Боул с курицей и лаймом", "25 мин"], ["Ужин", "Паста с томатами", "35 мин"]] }
   ];
+  const mealNames = { breakfast: "Завтрак", lunch: "Обед", dinner: "Ужин", snack: "Перекус" } as const;
+  const days = plan ? Object.entries(plan.dishes.reduce<Record<string, Array<[string, string, string]>>>((result, dish) => {
+    (result[dish.date] ||= []).push([mealNames[dish.mealType], dish.title, `${dish.cookingMinutes} мин`]);
+    return result;
+  }, {})).map(([date, meals]) => ({ date, meals })) : fallbackDays;
+  const summary = plan
+    ? mode === "stores" ? `${Math.round(plan.summary.estimatedTotalThb)} ฿ · ${plan.summary.budgetWarning || "оценка модели"}` : `${Math.round(plan.summary.inventoryCoveragePercent)}% продуктов уже дома`
+    : mode === "stores" ? "1 286 ฿ · в пределах бюджета" : "82% продуктов уже дома";
   return <>
-    <div className="result-banner"><div><Check size={19} /><span><b>Меню готово</b><small>{mode === "stores" ? "1 286 ฿ · в пределах бюджета" : "82% продуктов уже дома"}</small></span></div><button onClick={onReset}>Изменить</button></div>
-    <div className="days-list">{days.map((day) => <section key={day.date} className="day-card"><h3>{day.date}</h3>{day.meals.map(([type, name, time], index) => <button key={name} className="meal-row" onClick={index === 2 && day === days[0] ? onRecipe : undefined}><span className={`meal-dot dot-${index}`} /><span className="meal-content"><small>{type}</small><b>{name}</b><em><Clock3 size={13} />{time}</em></span><ChevronRight size={18} /></button>)}</section>)}</div>
+    <div className="result-banner"><div><Check size={19} /><span><b>Меню готово</b><small>{summary}</small></span></div><button onClick={onReset}>Изменить</button></div>
+    <div className="days-list">{days.map((day) => <section key={day.date} className="day-card"><h3>{day.date}</h3>{day.meals.map(([type, name, time], index) => <button key={`${day.date}-${name}`} className="meal-row" onClick={name.toLowerCase().includes("пад крапао") ? onRecipe : () => notify(`Рецепт «${name}» выбран`)}><span className={`meal-dot dot-${index}`} /><span className="meal-content"><small>{type}</small><b>{name}</b><em><Clock3 size={13} />{time}</em></span><ChevronRight size={18} /></button>)}</section>)}</div>
     <div className="sticky-actions"><button className="secondary-action" onClick={onReset}>Заново</button><button className="main-action" onClick={() => notify("Меню сохранено")}>Сохранить меню</button></div>
   </>;
 }
@@ -319,20 +364,25 @@ function MoreScreen({ onSettings, notify }: { onSettings: () => void; notify: (t
 
 function MoreRow({ icon, title, detail, onClick }: { icon: React.ReactNode; title: string; detail: string; onClick: () => void }) { return <button className="more-row" onClick={onClick}><span>{icon}</span><div><b>{title}</b><small>{detail}</small></div><ChevronRight /></button>; }
 function Timeline({ icon, title, meta }: { icon: string; title: string; meta: string }) { return <div className="timeline-row"><span>{icon}</span><div><b>{title}</b><small>{meta}</small></div></div>; }
-function FormRow({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) { return <button className="form-row"><span className="form-icon">{icon}</span><span><small>{label}</small><b>{value}</b></span><ChevronRight size={18} /></button>; }
+function StepperRow({ label, value, icon, onDecrease, onIncrease, decreaseDisabled, increaseDisabled }: { label: string; value: string; icon: React.ReactNode; onDecrease: () => void; onIncrease: () => void; decreaseDisabled: boolean; increaseDisabled: boolean }) {
+  const name = label.toLowerCase();
+  return <div className="form-row"><span className="form-icon">{icon}</span><span className="form-copy"><b>{label}</b><small>Кнопками − и +</small></span><span className="row-stepper" role="group" aria-label={label}><button type="button" onClick={onDecrease} disabled={decreaseDisabled} aria-label={`Уменьшить ${name}`}><Minus size={16} /></button><output aria-live="polite">{value}</output><button type="button" onClick={onIncrease} disabled={increaseDisabled} aria-label={`Увеличить ${name}`}><Plus size={16} /></button></span></div>;
+}
 function OptionSection({ title, children }: { title: string; children: React.ReactNode }) { return <div className="option-section"><h3>{title}</h3>{children}</div>; }
 
 function AddProductSheet({ onClose, onAdd }: { onClose: () => void; onAdd: (item: InventoryItem) => void }) {
   const [mode, setMode] = useState<"manual" | "photo" | "receipt">("manual");
   const name = useRef<HTMLInputElement>(null);
   const quantity = useRef<HTMLInputElement>(null);
+  const unit = useRef<HTMLSelectElement>(null);
+  const storage = useRef<HTMLSelectElement>(null);
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    onAdd({ id: crypto.randomUUID(), name: name.current?.value || "Новый продукт", quantity: Number(quantity.current?.value || 1), unit: "г", storage: "Холодильник", expiry: "срок не указан", icon: "🥬" });
+    onAdd({ id: crypto.randomUUID(), name: name.current?.value || "Новый продукт", quantity: Number(quantity.current?.value || 1), unit: (unit.current?.value || "г") as InventoryItem["unit"], storage: (storage.current?.value || "Холодильник") as Storage, expiry: "срок не указан", icon: "🥬" });
   };
-  return <div className="overlay" role="dialog" aria-modal="true"><div className="sheet"><div className="sheet-handle" /><div className="sheet-title"><div><p className="eyebrow">НОВАЯ ПОЗИЦИЯ</p><h2>Добавить продукт</h2></div><button className="icon-button" onClick={onClose}><X /></button></div>
+  return <div className="overlay" role="dialog" aria-modal="true"><div className="sheet"><div className="sheet-handle" /><div className="sheet-title"><div><p className="eyebrow">НОВАЯ ПОЗИЦИЯ</p><h2>Добавить продукт</h2></div><button className="icon-button" onClick={onClose} aria-label="Закрыть"><X /></button></div>
     <div className="input-modes"><button className={mode === "manual" ? "active" : ""} onClick={() => setMode("manual")}><Plus />Вручную</button><button className={mode === "photo" ? "active" : ""} onClick={() => setMode("photo")}><Camera />Фото</button><button className={mode === "receipt" ? "active" : ""} onClick={() => setMode("receipt")}><ReceiptText />Чек</button></div>
-    {mode === "manual" ? <form onSubmit={submit} className="product-form"><label><span>Название</span><input ref={name} required placeholder="Например, авокадо" autoFocus /></label><div className="form-split"><label><span>Количество</span><input ref={quantity} type="number" min="0.01" step="0.01" required placeholder="500" /></label><label><span>Единица</span><select defaultValue="г"><option>г</option><option>мл</option><option>шт</option></select></label></div><label><span>Где хранится</span><select defaultValue="Холодильник"><option>Холодильник</option><option>Морозильник</option><option>Кладовая</option></select></label><button className="main-action" type="submit">Добавить в запасы</button></form> : <label className="upload-zone"><input type="file" accept="image/*" capture="environment" /><Camera size={30} /><b>{mode === "receipt" ? "Сфотографировать чек" : "Сфотографировать упаковку"}</b><span>После распознавания вы проверите все данные</span></label>}
+    {mode === "manual" ? <form onSubmit={submit} className="product-form"><label><span>Название</span><input ref={name} required placeholder="Например, авокадо" autoFocus /></label><div className="form-split"><label><span>Количество</span><input ref={quantity} type="number" min="0.01" step="0.01" required placeholder="500" /></label><label><span>Единица</span><select ref={unit} defaultValue="г"><option>г</option><option>мл</option><option>шт</option></select></label></div><label><span>Где хранится</span><select ref={storage} defaultValue="Холодильник"><option>Холодильник</option><option>Морозильник</option><option>Кладовая</option></select></label><button className="main-action" type="submit">Добавить в запасы</button></form> : <label className="upload-zone"><input type="file" accept="image/*" capture="environment" /><Camera size={30} /><b>{mode === "receipt" ? "Сфотографировать чек" : "Сфотографировать упаковку"}</b><span>После распознавания вы проверите все данные</span></label>}
   </div></div>;
 }
 
@@ -362,7 +412,7 @@ function CatalogSearchSheet({ onClose, onAdd }: { onClose: () => void; onAdd: (p
     }
   };
 
-  return <div className="overlay" role="dialog" aria-modal="true"><div className="sheet tall"><div className="sheet-handle" /><div className="sheet-title"><div><p className="eyebrow">TOPS И MAKRO</p><h2>Найти товар</h2></div><button className="icon-button" onClick={onClose}><X /></button></div>
+  return <div className="overlay" role="dialog" aria-modal="true"><div className="sheet tall"><div className="sheet-handle" /><div className="sheet-title"><div><p className="eyebrow">TOPS И MAKRO</p><h2>Найти товар</h2></div><button className="icon-button" onClick={onClose} aria-label="Закрыть"><X /></button></div>
     <form className="catalog-form" onSubmit={search}>
       <label className="search-box"><Search size={19} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Например, jasmine rice" autoFocus /></label>
       <div className="choice-wrap">{(["all", "tops", "makro"] as const).map((value) => <button type="button" key={value} className={store === value ? "choice active" : "choice"} onClick={() => setStore(value)}>{value === "all" ? "Оба магазина" : value === "tops" ? "Tops" : "Makro"}</button>)}</div>
@@ -376,21 +426,23 @@ function CatalogSearchSheet({ onClose, onAdd }: { onClose: () => void; onAdd: (p
 
 function SettingsSheet({ onClose, notify }: { onClose: () => void; notify: (text: string) => void }) {
   const [batch, setBatch] = useState(false); const [repeats, setRepeats] = useState(true);
-  return <div className="overlay" role="dialog" aria-modal="true"><div className="sheet tall"><div className="sheet-handle" /><div className="sheet-title"><div><p className="eyebrow">ПО УМОЛЧАНИЮ</p><h2>Настройки меню</h2></div><button className="icon-button" onClick={onClose}><X /></button></div>
-    <div className="settings-group"><label><span><b>Время приготовления</b><small>Для обычного дня</small></span><select defaultValue="45"><option value="30">до 30 минут</option><option value="45">до 45 минут</option><option value="60">до 60 минут</option></select></label><label><span><b>Сложность</b><small>Максимальный уровень</small></span><select defaultValue="medium"><option value="easy">Легко</option><option value="medium">Средне</option><option value="hard">Сложно</option></select></label><label><span><b>Разрешить повторы</b><small>Повторять удачные блюда</small></span><Toggle checked={repeats} setChecked={setRepeats} /></label><label><span><b>Готовить на несколько дней</b><small>Учитывать остатки порций</small></span><Toggle checked={batch} setChecked={setBatch} /></label></div>
-    <OptionSection title="Доступная техника"><div className="choice-wrap"><button className="choice active"><Check size={15} />Плита</button><button className="choice active"><Check size={15} />Аэрогриль</button><button className="choice active"><Check size={15} />Рисоварка</button><button className="choice active"><Check size={15} />Микроволновка</button><button className="choice">Блендер</button></div></OptionSection>
+  const [equipment, setEquipment] = useState(["Плита", "Аэрогриль", "Рисоварка", "Микроволновка"]);
+  const toggleEquipment = (item: string) => setEquipment((old) => old.includes(item) ? old.filter((value) => value !== item) : [...old, item]);
+  return <div className="overlay" role="dialog" aria-modal="true"><div className="sheet tall"><div className="sheet-handle" /><div className="sheet-title"><div><p className="eyebrow">ПО УМОЛЧАНИЮ</p><h2>Настройки меню</h2></div><button className="icon-button" onClick={onClose} aria-label="Закрыть"><X /></button></div>
+    <div className="settings-group"><label><span><b>Время приготовления</b><small>Для обычного дня</small></span><select defaultValue="45"><option value="30">до 30 минут</option><option value="45">до 45 минут</option><option value="60">до 60 минут</option></select></label><label><span><b>Сложность</b><small>Максимальный уровень</small></span><select defaultValue="medium"><option value="easy">Легко</option><option value="medium">Средне</option><option value="hard">Сложно</option></select></label><label><span><b>Разрешить повторы</b><small>Повторять удачные блюда</small></span><Toggle label="Разрешить повторы" checked={repeats} setChecked={setRepeats} /></label><label><span><b>Готовить на несколько дней</b><small>Учитывать остатки порций</small></span><Toggle label="Готовить на несколько дней" checked={batch} setChecked={setBatch} /></label></div>
+    <OptionSection title="Доступная техника"><div className="choice-wrap">{["Плита", "Аэрогриль", "Рисоварка", "Микроволновка", "Блендер"].map((item) => <button key={item} className={equipment.includes(item) ? "choice active" : "choice"} onClick={() => toggleEquipment(item)}>{equipment.includes(item) && <Check size={15} />}{item}</button>)}</div></OptionSection>
     <label className="wish-field"><span>Постоянные пожелания</span><textarea defaultValue="Больше овощей. Ужин не слишком острый." /></label><button className="main-action" onClick={() => { notify("Настройки сохранены"); onClose(); }}>Сохранить настройки</button>
   </div></div>;
 }
 
-function Toggle({ checked, setChecked }: { checked: boolean; setChecked: (v: boolean) => void }) { return <button className={checked ? "toggle on" : "toggle"} onClick={() => setChecked(!checked)} aria-pressed={checked}><i /></button>; }
+function Toggle({ label, checked, setChecked }: { label: string; checked: boolean; setChecked: (v: boolean) => void }) { return <button type="button" className={checked ? "toggle on" : "toggle"} onClick={() => setChecked(!checked)} aria-label={label} aria-pressed={checked}><i /></button>; }
 
 function RecipeView({ onClose, notify }: { onClose: () => void; notify: (text: string) => void }) {
   const [servings, setServings] = useState(2); const factor = servings / 2;
-  return <div className="full-overlay"><article className="recipe-view"><div className="recipe-photo"><Image src="/pad-krapow.png" alt="Пад крапао с жасминовым рисом" fill sizes="(max-width: 600px) 100vw, 600px" /><button className="round-glass back" onClick={onClose}><ChevronLeft /></button><button className="round-glass favorite" onClick={() => notify("Рецепт добавлен в коллекцию")}><Star /></button></div>
+  return <div className="full-overlay" role="dialog" aria-modal="true" aria-label="Рецепт"><article className="recipe-view"><div className="recipe-photo"><Image src="/pad-krapow.png" alt="Пад крапао с жасминовым рисом" fill sizes="(max-width: 600px) 100vw, 600px" /><button className="round-glass back" onClick={onClose} aria-label="Закрыть рецепт"><ChevronLeft /></button><button className="round-glass favorite" onClick={() => notify("Рецепт добавлен в коллекцию")} aria-label="Сохранить рецепт"><Star /></button></div>
       <div className="recipe-body"><p className="eyebrow">ТАЙСКАЯ КУХНЯ · УЖИН</p><h1>Пад крапао с жасминовым рисом</h1><p className="recipe-lead">Ароматная курица с базиликом, чили и соусом, поданная с воздушным жасминовым рисом.</p><div className="recipe-facts"><span><Clock3 />30 мин</span><span><SlidersHorizontal />Средне</span><span><CircleDollarSign />≈ 92 ฿/порция</span></div>
       <div className="nutrition-row"><Metric value={`${Math.round(640 * factor)}`} label="ккал всего" /><Metric value={`${Math.round(42 * factor)} г`} label="белки" /><Metric value={`${Math.round(19 * factor)} г`} label="жиры" /><Metric value={`${Math.round(72 * factor)} г`} label="углеводы" /></div>
-      <div className="servings-control"><div><b>Порции</b><small>Ингредиенты пересчитаются</small></div><div><button onClick={() => setServings(Math.max(1, servings - 1))}><Minus /></button><strong>{servings}</strong><button onClick={() => setServings(servings + 1)}><Plus /></button></div></div>
+      <div className="servings-control"><div><b>Порции</b><small>Ингредиенты пересчитаются</small></div><div><button onClick={() => setServings(Math.max(1, servings - 1))} aria-label="Уменьшить число порций"><Minus /></button><strong>{servings}</strong><button onClick={() => setServings(servings + 1)} aria-label="Увеличить число порций"><Plus /></button></div></div>
       <section className="recipe-section"><h2>Ингредиенты</h2>{[["Куриное филе", `${Math.round(400 * factor)} г`], ["Жасминовый рис", `${Math.round(180 * factor)} г`], ["Свежий базилик", `${Math.round(30 * factor)} г`], ["Чеснок", `${Math.round(12 * factor)} г`], ["Соевый соус", `${Math.round(30 * factor)} мл`], ["Чили", `${Math.max(1, Math.round(2 * factor))} шт`]].map(([name, amount]) => <div className="ingredient" key={name}><span>{name}</span><b>{amount}</b></div>)}</section>
       <section className="recipe-section steps"><h2>Как приготовить</h2><div><span>1</span><p>Промойте рис и приготовьте в рисоварке до мягкости.</p></div><div><span>2</span><p>Нарежьте курицу, разогрейте сковороду и обжарьте до золотистой корочки.</p></div><div><span>3</span><p>Добавьте чеснок, чили и соус. В самом конце вмешайте листья базилика.</p></div></section>
       <div className="feedback"><button onClick={() => notify("Будем предлагать чаще")}><Heart />Нравится</button><button onClick={() => notify("Рецепт больше не появится")}><ThumbsDown />Не моё</button><button onClick={() => notify("Сохранено в коллекцию")}><Star />Сохранить</button></div>

@@ -14,7 +14,7 @@ const catalogSearchResultSchema = z.object({
     originalName: z.string(),
     packageText: z.string().nullable(),
     priceThb: z.number().nonnegative().nullable(),
-    url: z.string().url(),
+    url: z.string(),
     availability: z.enum(["available", "unavailable", "unknown"]),
     note: z.string().nullable()
   })).max(12)
@@ -47,7 +47,7 @@ export async function searchOfficialCatalog(input: z.infer<typeof catalogSearchR
       search_context_size: "low",
       filters: { allowed_domains: allowedDomains }
     }],
-    tool_choice: "auto",
+    tool_choice: "required",
     include: ["web_search_call.action.sources"],
     input: [
       {
