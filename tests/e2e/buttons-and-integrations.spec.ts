@@ -88,7 +88,7 @@ test("рабочие элементы управления дают наблюд
   await expect(quantity).toContainText("650 г");
 
   await page.getByRole("button", { name: "Меню", exact: true }).click();
-  await page.getByRole("button", { name: "Изменить" }).click();
+  await page.getByRole("button", { name: "Параметры" }).click();
   const period = page.getByRole("group", { name: "Период" });
   await period.getByRole("button", { name: "Уменьшить период" }).click();
   await expect(period.locator("output")).toHaveText("2 дня");
@@ -119,6 +119,7 @@ test("рабочие элементы управления дают наблюд
 
 test("UI использует ответ модели и отправляет изменённые параметры", async ({ page }) => {
   let requestBody: Record<string, unknown> | null = null;
+  let revisionBody: Record<string, unknown> | null = null;
   let savedBody: Record<string, unknown> | null = null;
   await page.route("**/api/meal-plans/generate", async (route) => {
     requestBody = route.request().postDataJSON();
@@ -145,6 +146,15 @@ test("UI использует ответ модели и отправляет и
     savedBody = route.request().postDataJSON();
     await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ source: "supabase", id: "plan-id" }) });
   });
+  await page.route("**/api/meal-plans/revise", async (route) => {
+    revisionBody = route.request().postDataJSON();
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "openai", plan: {
+      title: "Исправленное меню",
+      summary: { days: 4, servings: 3, estimatedTotalThb: 480, inventoryCoveragePercent: 72, budgetWarning: null },
+      dishes: [{ date: "2026-10-09", mealType: "dinner", title: "Овощной суп", cookingMinutes: 20, difficulty: "easy", servings: 3, estimatedCostThb: 160, ingredients: [{ name: "Томаты", quantity: 300, unit: "g", fromInventory: false }], instructions: ["Нарезать овощи", "Прогреть кастрюлю", "Сварить овощи", "Проверить готовность", "Подать суп"], nutritionPerServing: { kcal: 320, proteinG: 12, fatG: 8, carbsG: 48, fiberG: 8 } }],
+      missingProducts: [{ name: "Томаты", quantity: 300, unit: "g" }]
+    } }) });
+  });
 
   await page.getByRole("button", { name: "Меню", exact: true }).click();
   await page.getByRole("button", { name: "Увеличить период" }).click();
@@ -157,9 +167,15 @@ test("UI использует ответ модели и отправляет и
   expect(requestBody).not.toBeNull();
   expect(requestBody).toMatchObject({ days: 4, servings: 3, wish: "без острого" });
   expect((requestBody as unknown as { cuisines: string[] }).cuisines).toContain("японская");
+  await page.getByPlaceholder(/Например: убери ужин/).fill("Замени суп на овощной и убери рис");
+  await page.getByRole("button", { name: "Применить изменения" }).click();
+  await expect(page.getByText("Овощной суп", { exact: true })).toBeVisible();
+  await expect(page.getByText("Интеграционный суп", { exact: true })).toBeHidden();
+  await expect(page.locator(".toast")).toContainText("Меню изменено");
+  expect(revisionBody).toMatchObject({ instruction: "Замени суп на овощной и убери рис", plan: { title: "Интеграционное меню" } });
   await page.getByRole("button", { name: "Сохранить меню" }).click();
   await expect(page.locator(".toast")).toContainText("Меню сохранено в базе");
-  expect(savedBody).toMatchObject({ mode: "inventory", request: { days: 4, servings: 3 }, plan: { title: "Интеграционное меню" } });
+  expect(savedBody).toMatchObject({ mode: "inventory", request: { days: 4, servings: 3 }, plan: { title: "Исправленное меню" } });
 });
 
 test("сохранённое меню загружается, а недостающие продукты появляются в покупках", async ({ page }) => {

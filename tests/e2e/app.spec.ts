@@ -50,6 +50,12 @@ test("локальные API валидируют данные и работаю
   expect(generated).toMatchObject({ source: "demo", status: "needs_confirmation" });
   expect(generated.plan.dishes.length).toBeGreaterThan(0);
 
+  const invalidRevision = await request.post("/api/meal-plans/revise", { data: { instruction: "" } });
+  expect(invalidRevision.status()).toBe(400);
+  const revision = await request.post("/api/meal-plans/revise", { data: { instruction: "Убери рис", request: planRequest, plan: generated.plan } });
+  expect(revision.ok()).toBe(true);
+  expect(await revision.json()).toMatchObject({ source: "demo", plan: generated.plan });
+
   const invalidSave = await request.post("/api/meal-plans", { data: { mode: "inventory" } });
   expect(invalidSave.status()).toBe(400);
   const saved = await request.post("/api/meal-plans", { data: { mode: "inventory", request: planRequest, plan: generated.plan } });

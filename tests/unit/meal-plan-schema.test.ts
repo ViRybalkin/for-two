@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generatedMealPlanSchema, mealPlanRequestSchema } from "@/lib/schemas/meal-plan";
+import { generatedMealPlanSchema, mealPlanRequestSchema, mealPlanRevisionRequestSchema } from "@/lib/schemas/meal-plan";
 
 describe("mealPlanRequestSchema", () => {
   it("accepts a complete inventory request", () => {
@@ -60,5 +60,11 @@ describe("generatedMealPlanSchema", () => {
     const invalid = structuredClone(validPlan);
     invalid.dishes[0].instructions = ["1", "2", "3", "4", "5", "6"];
     expect(generatedMealPlanSchema.safeParse(invalid).success).toBe(false);
+  });
+
+  it("validates a free-form revision together with the current plan", () => {
+    const request = { mode: "inventory", days: 3, servings: 2, cuisines: ["тайская"], mealTypes: ["dinner"], inventory: [] };
+    expect(mealPlanRevisionRequestSchema.safeParse({ instruction: "Убери курицу", request, plan: validPlan }).success).toBe(true);
+    expect(mealPlanRevisionRequestSchema.safeParse({ instruction: "", request, plan: validPlan }).success).toBe(false);
   });
 });

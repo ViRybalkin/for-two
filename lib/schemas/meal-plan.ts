@@ -55,5 +55,12 @@ export const generatedMealPlanSchema = z.object({
   }))
 });
 
+export const mealPlanRevisionRequestSchema = z.object({
+  instruction: z.string().trim().min(2).max(1000),
+  request: mealPlanRequestSchema,
+  plan: generatedMealPlanSchema
+});
+
 export type MealPlanRequest = z.infer<typeof mealPlanRequestSchema>;
 export type GeneratedMealPlan = z.infer<typeof generatedMealPlanSchema>;
+export type MealPlanRevisionRequest = z.infer<typeof mealPlanRevisionRequestSchema>;

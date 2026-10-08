@@ -355,6 +355,8 @@ function MenuScreen({ inventory, setShopping, savedPlan, onPlanSaved, onRecipe, 
   const [plan, setPlan] = useState<GeneratedMealPlan | null>(null);
   const [lastRequest, setLastRequest] = useState<MealPlanRequest | null>(null);
   const [saving, setSaving] = useState(false);
+  const [revising, setRevising] = useState(false);
+  const [revisionInstruction, setRevisionInstruction] = useState("");
   const [savedPlanId, setSavedPlanId] = useState<string | null>(null);
   const [days, setDays] = useState(3);
   const [servings, setServings] = useState(2);
@@ -422,6 +424,27 @@ function MenuScreen({ inventory, setShopping, savedPlan, onPlanSaved, onRecipe, 
       setSaving(false);
     }
   };
+  const revise = async () => {
+    if (!plan || !lastRequest || revisionInstruction.trim().length < 2) return;
+    setRevising(true);
+    try {
+      const response = await fetch("/api/meal-plans/revise", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ instruction: revisionInstruction.trim(), request: lastRequest, plan })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error?.message || "Не удалось изменить меню");
+      setPlan(data.plan);
+      setSavedPlanId(null);
+      setRevisionInstruction("");
+      notify(data.source === "openai" ? "Меню изменено · проверьте и сохраните" : "Изменения обработаны");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Не удалось изменить меню");
+    } finally {
+      setRevising(false);
+    }
+  };
   return (
     <section className="screen">
       <BrandHeader title="Меню" subtitle="План питания на двоих" />
@@ -438,12 +461,12 @@ function MenuScreen({ inventory, setShopping, savedPlan, onPlanSaved, onRecipe, 
         <label className="wish-field"><span>Пожелание</span><textarea value={wish} onChange={(event) => setWish(event.target.value)} placeholder="Например: больше овощей, без острого…" /></label>
         <button className="main-action" disabled={loading || meals.length === 0 || cuisines.length === 0} onClick={generate}>{loading ? <span className="spinner" /> : <Sparkles size={20} />}{loading ? "Составляем меню…" : "Составить меню"}</button>
         <p className="fine-print">Результат можно изменить перед сохранением</p>
-      </> : <GeneratedMenu plan={plan} onRecipe={onRecipe} onReset={() => { setGenerated(false); setSavedPlanId(null); }} onSave={() => void save()} saving={saving} saved={Boolean(savedPlanId)} mode={mode} notify={notify} />}
+      </> : <GeneratedMenu plan={plan} revisionInstruction={revisionInstruction} onRevisionInstruction={setRevisionInstruction} onRevise={() => void revise()} revising={revising} onRecipe={onRecipe} onReset={() => { setGenerated(false); setSavedPlanId(null); }} onSave={() => void save()} saving={saving} saved={Boolean(savedPlanId)} mode={mode} />}
     </section>
   );
 }
 
-function GeneratedMenu({ plan, onRecipe, onReset, onSave, saving, saved, mode }: { plan: GeneratedMealPlan | null; onRecipe: (dish: MealDish) => void; onReset: () => void; onSave: () => void; saving: boolean; saved: boolean; mode: string; notify: (t: string) => void }) {
+function GeneratedMenu({ plan, revisionInstruction, onRevisionInstruction, onRevise, revising, onRecipe, onReset, onSave, saving, saved, mode }: { plan: GeneratedMealPlan | null; revisionInstruction: string; onRevisionInstruction: (value: string) => void; onRevise: () => void; revising: boolean; onRecipe: (dish: MealDish) => void; onReset: () => void; onSave: () => void; saving: boolean; saved: boolean; mode: string }) {
   const mealNames = { breakfast: "Завтрак", lunch: "Обед", dinner: "Ужин", snack: "Перекус" } as const;
   if (!plan) return <EmptyState icon={<CookingPot />} title="Меню не загрузилось" text="Вернитесь к параметрам и составьте меню ещё раз" />;
   const days = Object.entries(plan.dishes.reduce<Record<string, Array<{ type: string; name: string; time: string; dish: MealDish }>>>((result, dish) => {
@@ -452,7 +475,8 @@ function GeneratedMenu({ plan, onRecipe, onReset, onSave, saving, saved, mode }:
   }, {})).map(([date, meals]) => ({ date, meals }));
   const summary = mode === "stores" ? `${Math.round(plan.summary.estimatedTotalThb)} ฿ · ${plan.summary.budgetWarning || "оценка модели"}` : `${Math.round(plan.summary.inventoryCoveragePercent)}% продуктов уже дома`;
   return <>
-    <div className="result-banner"><div><Check size={19} /><span><b>Меню готово</b><small>{summary}</small></span></div><button onClick={onReset}>Изменить</button></div>
+    <div className="result-banner"><div><Check size={19} /><span><b>Меню готово</b><small>{summary}</small></span></div><button onClick={onReset}>Параметры</button></div>
+    <div className="revision-card"><label htmlFor="menu-revision"><b>Изменить меню своими словами</b><small>Можно убрать или заменить блюдо, ингредиент, изменить порции или время</small></label><textarea id="menu-revision" value={revisionInstruction} onChange={(event) => onRevisionInstruction(event.target.value)} maxLength={1000} placeholder="Например: убери ужин во второй день, а из завтраков исключи банан" disabled={revising || saving} /><button className="secondary-action" onClick={onRevise} disabled={revising || saving || revisionInstruction.trim().length < 2}>{revising ? <span className="spinner" /> : <Sparkles size={18} />}{revising ? "Изменяем меню…" : "Применить изменения"}</button></div>
     <div className="days-list">{days.map((day) => <section key={day.date} className="day-card"><h3>{day.date}</h3>{day.meals.map(({ type, name, time, dish }, index) => <button key={`${day.date}-${name}`} className="meal-row" onClick={() => onRecipe(dish)}><span className={`meal-dot dot-${index}`} /><span className="meal-content"><small>{type}</small><b>{name}</b><em><Clock3 size={13} />{time}</em></span><ChevronRight size={18} /></button>)}</section>)}</div>
     <div className="sticky-actions"><button className="secondary-action" onClick={onReset} disabled={saving}>Заново</button><button className="main-action" onClick={onSave} disabled={saving || !plan || saved}>{saving ? "Сохраняем…" : saved ? "Меню сохранено" : "Сохранить меню"}</button></div>
   </>;
