@@ -197,6 +197,38 @@ test("главный экран показывает сегодняшнее бл
   await expect(page.getByRole("dialog", { name: "Рецепт Карри с рисом" }).getByRole("heading", { name: "Карри с рисом" })).toBeVisible();
 });
 
+test("слайдер начинает с первого неприготовленного блюда", async ({ page }) => {
+  let completed: string[] = [];
+  const dishes = [
+    { date: "2026-10-08", mealType: "breakfast", title: "Йогурт с фруктами", cookingMinutes: 5, difficulty: "easy", servings: 2, estimatedCostThb: 100, ingredients: [{ name: "Йогурт", quantity: 300, unit: "g", fromInventory: false }], instructions: ["Смешать"], nutritionPerServing: { kcal: 250, proteinG: 12, fatG: 8, carbsG: 32, fiberG: 3 } },
+    { date: "2026-10-08", mealType: "lunch", title: "Обеденный боул", cookingMinutes: 20, difficulty: "easy", servings: 2, estimatedCostThb: 200, ingredients: [{ name: "Рис", quantity: 200, unit: "g", fromInventory: false }], instructions: ["Приготовить"], nutritionPerServing: { kcal: 500, proteinG: 20, fatG: 12, carbsG: 70, fiberG: 5 } },
+    { date: "2026-10-08", mealType: "dinner", title: "Вечернее карри", cookingMinutes: 30, difficulty: "medium", servings: 2, estimatedCostThb: 250, ingredients: [{ name: "Овощи", quantity: 400, unit: "g", fromInventory: false }], instructions: ["Потушить"], nutritionPerServing: { kcal: 550, proteinG: 18, fatG: 20, carbsG: 65, fiberG: 8 } }
+  ];
+  const plan = { title: "Меню дня", summary: { days: 1, servings: 2, estimatedTotalThb: 550, inventoryCoveragePercent: 0, budgetWarning: null }, dishes, missingProducts: [] };
+  const request = { mode: "stores", days: 1, servings: 2, budgetThb: 1000, cuisines: ["тайская"], mealTypes: ["breakfast", "lunch", "dinner"], inventory: [] };
+  await page.route("**/api/meal-plans", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", items: [{ id: "daily-plan", mode: "stores", request, plan, completed }] }) });
+  });
+  await page.route("**/api/meal-plans/daily-plan/complete", async (route) => {
+    const body = route.request().postDataJSON() as { date: string; mealType: string };
+    completed = [`${body.date}:${body.mealType}`];
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", completed }) });
+  });
+
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Йогурт с фруктами" })).toBeVisible();
+  await page.getByRole("button", { name: "Следующее блюдо" }).click();
+  await expect(page.getByRole("heading", { name: "Обеденный боул" })).toBeVisible();
+  await page.getByRole("button", { name: "Показать: Йогурт с фруктами" }).click();
+  await page.getByRole("button", { name: "Открыть рецепт Йогурт с фруктами" }).click();
+  await page.getByRole("button", { name: "Приготовлено" }).click();
+  await expect(page.getByRole("status")).toContainText("следующим показано ближайшее");
+  await expect(page.getByRole("heading", { name: "Обеденный боул" })).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Обеденный боул" })).toBeVisible();
+});
+
 test("сохранение нового меню из магазинов обновляет покупки", async ({ page }) => {
   await page.route("**/api/meal-plans", async (route) => {
     if (route.request().method() === "GET") {

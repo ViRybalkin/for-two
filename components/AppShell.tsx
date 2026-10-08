@@ -35,6 +35,7 @@ import {
 import { FormEvent, useEffect, useRef, useState } from "react";
 import type { GeneratedMealPlan, MealPlanRequest } from "@/lib/schemas/meal-plan";
 import { getBangkokDate } from "@/lib/meal-plan-dates";
+import { getMealDishKey } from "@/lib/meal-plan-completion";
 
 type Tab = "today" | "inventory" | "menu" | "shopping" | "more";
 type Storage = "Холодильник" | "Морозильник" | "Кладовая";
@@ -50,7 +51,7 @@ type InventoryItem = {
 type ShoppingItem = { id: string; name: string; detail: string; price: number; bought: boolean; store: "Tops" | "Makro" };
 type CatalogProduct = { store: "tops" | "makro"; originalName: string; packageText: string | null; priceThb: number | null; url: string; availability: string; checkedAt: string };
 type MealDish = GeneratedMealPlan["dishes"][number];
-type SavedMealPlan = { id: string; mode: "inventory" | "stores"; request: MealPlanRequest; plan: GeneratedMealPlan };
+type SavedMealPlan = { id: string; mode: "inventory" | "stores"; request: MealPlanRequest; plan: GeneratedMealPlan; completed: string[] };
 
 const fallbackDish: MealDish = {
   date: "2026-10-08",
@@ -130,7 +131,7 @@ export function AppShell() {
       .then((response) => response.ok ? response.json() : null)
       .then((data) => {
         const latest = data?.source === "supabase" && Array.isArray(data.items) ? data.items[0] : null;
-        if (latest?.plan && latest?.request) setSavedPlan(latest);
+        if (latest?.plan && latest?.request) setSavedPlan({ ...latest, completed: Array.isArray(latest.completed) ? latest.completed : [] });
       })
       .catch(() => null);
   }, []);
@@ -155,10 +156,31 @@ export function AppShell() {
     setSheet("recipe");
   };
 
+  const completeDish = async (dish: MealDish) => {
+    if (!savedPlan) {
+      notify("Сначала сохраните меню");
+      return;
+    }
+    try {
+      const response = await fetch(`/api/meal-plans/${savedPlan.id}/complete`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ date: dish.date, mealType: dish.mealType, completed: true })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error?.message || "Не удалось отметить блюдо");
+      setSavedPlan((current) => current ? { ...current, completed: data.completed || current.completed } : current);
+      setSheet(null);
+      notify("Блюдо приготовлено · следующим показано ближайшее");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Не удалось отметить блюдо");
+    }
+  };
+
   return (
     <main className="site-shell">
       <div className="phone-surface">
-        {tab === "today" && <TodayScreen plan={savedPlan?.plan || null} onMenu={() => go("menu")} onInventory={() => go("inventory")} onRecipe={openRecipe} onAdd={() => setSheet("add")} onSettings={() => setSheet("settings")} notify={notify} />}
+        {tab === "today" && <TodayScreen savedPlan={savedPlan} onMenu={() => go("menu")} onInventory={() => go("inventory")} onRecipe={openRecipe} onAdd={() => setSheet("add")} onSettings={() => setSheet("settings")} notify={notify} />}
         {tab === "inventory" && <InventoryScreen items={inventory} setItems={setInventory} onAdd={() => setSheet("add")} notify={notify} />}
         {tab === "menu" && <MenuScreen inventory={inventory} setShopping={setShopping} savedPlan={savedPlan} onPlanSaved={setSavedPlan} onRecipe={openRecipe} notify={notify} />}
         {tab === "shopping" && <ShoppingScreen items={shopping} setItems={setShopping} notify={notify} onSearch={() => setSheet("catalog")} />}
@@ -192,7 +214,7 @@ export function AppShell() {
         }
       }} />}
       {sheet === "settings" && <SettingsSheet onClose={() => setSheet(null)} notify={notify} />}
-      {sheet === "recipe" && <RecipeView dish={selectedDish || fallbackDish} onClose={() => setSheet(null)} notify={notify} />}
+      {sheet === "recipe" && <RecipeView dish={selectedDish || fallbackDish} completed={Boolean(selectedDish && savedPlan?.completed.includes(getMealDishKey(selectedDish.date, selectedDish.mealType)))} onComplete={completeDish} onClose={() => setSheet(null)} notify={notify} />}
       {sheet === "catalog" && <CatalogSearchSheet onClose={() => setSheet(null)} onAdd={async (product) => {
         const item = { id: crypto.randomUUID(), name: product.originalName, detail: product.packageText || "фасовка не указана", price: product.priceThb || 0, bought: false, store: (product.store === "tops" ? "Tops" : "Makro") as ShoppingItem["store"] };
         try {
@@ -222,13 +244,21 @@ function BrandHeader({ title, subtitle, action }: { title: string; subtitle?: st
   );
 }
 
-function TodayScreen({ plan, onMenu, onInventory, onRecipe, onAdd, onSettings, notify }: { plan: GeneratedMealPlan | null; onMenu: () => void; onInventory: () => void; onRecipe: (dish: MealDish) => void; onAdd: () => void; onSettings: () => void; notify: (text: string) => void }) {
+function TodayScreen({ savedPlan, onMenu, onInventory, onRecipe, onAdd, onSettings, notify }: { savedPlan: SavedMealPlan | null; onMenu: () => void; onInventory: () => void; onRecipe: (dish: MealDish) => void; onAdd: () => void; onSettings: () => void; notify: (text: string) => void }) {
+  const [slideIndex, setSlideIndex] = useState(0);
   const today = getBangkokDate();
-  const todayDishes = plan?.dishes.filter((dish) => dish.date === today) || [];
-  const dish = todayDishes.find((item) => item.mealType === "dinner") || todayDishes[0] || plan?.dishes[0] || fallbackDish;
+  const todayDishes = savedPlan?.plan.dishes.filter((dish) => dish.date === today) || [];
+  const completed = savedPlan?.completed || [];
+  const firstPending = todayDishes.findIndex((dish) => !completed.includes(getMealDishKey(dish.date, dish.mealType)));
+  const orderedDishes = firstPending > 0 ? [...todayDishes.slice(firstPending), ...todayDishes.slice(0, firstPending)] : todayDishes;
+  const slides = orderedDishes.length ? orderedDishes : [fallbackDish];
+  const dish = slides[slideIndex % slides.length];
+  const dishCompleted = completed.includes(getMealDishKey(dish.date, dish.mealType));
   const mealNames = { breakfast: "Завтрак", lunch: "Обед", dinner: "Ужин", snack: "Перекус" } as const;
   const currentDate = new Intl.DateTimeFormat("ru-RU", { timeZone: "Asia/Bangkok", weekday: "long", day: "numeric", month: "long" }).format(new Date());
   const hasSpecificPhoto = dish.title.toLowerCase().includes("пад крапао");
+  useEffect(() => setSlideIndex(0), [savedPlan?.id, today, completed.join("|")]);
+  const moveSlide = (direction: number) => setSlideIndex((current) => (current + direction + slides.length) % slides.length);
   return (
     <section className="screen today-screen">
       <BrandHeader title="Доброе утро" subtitle={currentDate} action={<button className="avatar" aria-label="Общие настройки" onClick={onSettings}>В + Д</button>} />
@@ -238,13 +268,15 @@ function TodayScreen({ plan, onMenu, onInventory, onRecipe, onAdd, onSettings, n
         {hasSpecificPhoto ? <Image src="/pad-krapow.png" alt={dish.title} fill priority sizes="(max-width: 600px) 100vw, 560px" /> : <div className="meal-placeholder"><CookingPot size={74} /><span>Рецепт на сегодня</span></div>}
         <div className="hero-shade" />
         <button className="hero-open" onClick={() => onRecipe(dish)} aria-label={`Открыть рецепт ${dish.title}`} />
-        <div className="hero-top"><span className="meal-pill">{mealNames[dish.mealType]} · сегодня</span><button className="round-glass" aria-label="Добавить в любимые" onClick={() => notify("Рецепт добавлен в любимые")}><Heart size={19} /></button></div>
+        <div className="hero-top"><span className="meal-pill">{dishCompleted ? "✓ Приготовлено" : `${mealNames[dish.mealType]} · сегодня`}</span><button className="round-glass" aria-label="Добавить в любимые" onClick={() => notify("Рецепт добавлен в любимые")}><Heart size={19} /></button></div>
         <div className="hero-copy">
           <p className="eyebrow light">СЕГОДНЯ ГОТОВИМ</p>
           <h2>{dish.title}</h2>
           <div className="hero-meta"><span><Clock3 size={15} /> {dish.cookingMinutes} мин</span><span>{dish.servings} порции</span><span>≈ {Math.round(dish.estimatedCostThb)} ฿</span></div>
         </div>
+        {slides.length > 1 && <div className="meal-slider-controls"><button onClick={() => moveSlide(-1)} aria-label="Предыдущее блюдо"><ChevronLeft /></button><span>{slideIndex + 1} / {slides.length}</span><button onClick={() => moveSlide(1)} aria-label="Следующее блюдо"><ChevronRight /></button></div>}
       </article>
+      {slides.length > 1 && <div className="meal-slider-dots" aria-label="Блюда на сегодня">{slides.map((item, index) => <button key={getMealDishKey(item.date, item.mealType)} className={index === slideIndex ? "active" : ""} onClick={() => setSlideIndex(index)} aria-label={`Показать: ${item.title}`} />)}</div>}
 
       <div className="nutrition-row" aria-label="Пищевая ценность порции">
         <Metric value={`${Math.round(dish.nutritionPerServing.kcal)}`} label="ккал" />
@@ -385,7 +417,7 @@ function MenuScreen({ inventory, setShopping, savedPlan, onPlanSaved, onRecipe, 
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error?.message || "Не удалось сохранить меню");
       setSavedPlanId(data.id || null);
-      if (data.id) onPlanSaved({ id: data.id, mode, request: lastRequest, plan });
+      if (data.id) onPlanSaved({ id: data.id, mode, request: lastRequest, plan, completed: [] });
       if (Array.isArray(data.shoppingItems)) setShopping(data.shoppingItems);
       notify(mode === "stores" ? `Меню сохранено · ${data.shoppingItems?.length || 0} покупок добавлено` : "Меню сохранено в базе");
     } catch (error) {
@@ -611,8 +643,9 @@ function SettingsSheet({ onClose, notify }: { onClose: () => void; notify: (text
 
 function Toggle({ label, checked, setChecked }: { label: string; checked: boolean; setChecked: (v: boolean) => void }) { return <button type="button" className={checked ? "toggle on" : "toggle"} onClick={() => setChecked(!checked)} aria-label={label} aria-pressed={checked}><i /></button>; }
 
-function RecipeView({ dish, onClose, notify }: { dish: MealDish; onClose: () => void; notify: (text: string) => void }) {
+function RecipeView({ dish, completed, onComplete, onClose, notify }: { dish: MealDish; completed: boolean; onComplete: (dish: MealDish) => Promise<void>; onClose: () => void; notify: (text: string) => void }) {
   const [servings, setServings] = useState(dish.servings);
+  const [completing, setCompleting] = useState(false);
   const factor = servings / dish.servings;
   const mealNames = { breakfast: "ЗАВТРАК", lunch: "ОБЕД", dinner: "УЖИН", snack: "ПЕРЕКУС" } as const;
   const difficultyNames = { easy: "Легко", medium: "Средне", hard: "Сложно" } as const;
@@ -625,7 +658,7 @@ function RecipeView({ dish, onClose, notify }: { dish: MealDish; onClose: () => 
       <section className="recipe-section"><h2>Ингредиенты</h2>{dish.ingredients.map((ingredient) => <div className="ingredient" key={`${ingredient.name}-${ingredient.unit}`}><span>{ingredient.name}{ingredient.fromInventory ? <small> · из запасов</small> : null}</span><b>{Math.round(ingredient.quantity * factor * 10) / 10} {unitNames[ingredient.unit]}</b></div>)}</section>
       <section className="recipe-section steps"><h2>Как приготовить</h2>{dish.instructions.map((instruction, index) => <div key={`${index}-${instruction}`}><span>{index + 1}</span><p>{instruction}</p></div>)}</section>
       <div className="feedback"><button onClick={() => notify("Будем предлагать чаще")}><Heart />Нравится</button><button onClick={() => notify("Рецепт больше не появится")}><ThumbsDown />Не моё</button><button onClick={() => notify("Сохранено в коллекцию")}><Star />Сохранить</button></div>
-      <button className="main-action" onClick={() => notify("Открыто подтверждение списания продуктов")}><CookingPot />Приготовлено</button>
+      <button className="main-action" disabled={completed || completing} onClick={async () => { setCompleting(true); await onComplete(dish); setCompleting(false); }}><CookingPot />{completed ? "Уже приготовлено" : completing ? "Сохраняем…" : "Приготовлено"}</button>
     </div>
   </article></div>;
 }

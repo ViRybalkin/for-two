@@ -2,6 +2,7 @@ import "server-only";
 import { z } from "zod";
 import { generatedMealPlanSchema, mealPlanRequestSchema } from "@/lib/schemas/meal-plan";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
+import { getMealDishKey, mealPlanCompletionSchema } from "@/lib/meal-plan-completion";
 
 export const saveMealPlanSchema = z.object({
   mode: z.enum(["inventory", "stores"]),
@@ -44,7 +45,8 @@ export async function listMealPlans() {
       budgetThb: row.budget_thb === null ? null : Number(row.budget_thb),
       createdAt: row.created_at,
       request: parsed.data.request,
-      plan: parsed.data.plan
+      plan: parsed.data.plan,
+      completed: Array.isArray(parameters.completed) ? parameters.completed.filter((value): value is string => typeof value === "string") : []
     }];
   });
 }
@@ -54,7 +56,21 @@ export async function getMealPlan(id: string) {
   if (error) throw error;
   const parameters = data.parameters && typeof data.parameters === "object" ? data.parameters as Record<string, unknown> : {};
   const parsed = saveMealPlanSchema.parse({ mode: data.mode, request: parameters.request, plan: parameters.plan });
-  return { id: data.id as string, ...parsed };
+  return { id: data.id as string, ...parsed, completed: Array.isArray(parameters.completed) ? parameters.completed.filter((value): value is string => typeof value === "string") : [] };
+}
+
+export async function setMealPlanDishCompleted(id: string, input: z.infer<typeof mealPlanCompletionSchema>) {
+  const client = getSupabaseAdmin();
+  const { data, error: loadError } = await client.from("meal_plans").select("parameters").eq("id", id).single();
+  if (loadError) throw loadError;
+  const parameters = data.parameters && typeof data.parameters === "object" ? data.parameters as Record<string, unknown> : {};
+  const current = new Set(Array.isArray(parameters.completed) ? parameters.completed.filter((value): value is string => typeof value === "string") : []);
+  const key = getMealDishKey(input.date, input.mealType);
+  if (input.completed) current.add(key); else current.delete(key);
+  const completed = [...current];
+  const { error: updateError } = await client.from("meal_plans").update({ parameters: { ...parameters, completed } }).eq("id", id);
+  if (updateError) throw updateError;
+  return completed;
 }
 
 export async function deleteMealPlan(id: string) {

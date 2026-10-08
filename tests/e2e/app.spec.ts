@@ -107,7 +107,7 @@ test("меню: настройки, генерация и открытие ре�
   await page.getByRole("button", { name: /Пад крапао с рисом/ }).click();
   await expect(page.getByRole("dialog", { name: "Рецепт Пад крапао с рисом" }).getByRole("heading", { name: "Пад крапао с рисом" })).toBeVisible();
   await page.getByRole("button", { name: "Приготовлено" }).click();
-  await expect(page.getByRole("status")).toContainText("подтверждение списания");
+  await expect(page.getByRole("status")).toContainText("Сначала сохраните меню");
 });
 
 test("покупки: отметка товара и безопасный каталог без ключа", async ({ page }) => {
