@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isSupabaseConfigured } from "@/lib/services/inventory-repository";
 import { listMealPlans, saveMealPlan, saveMealPlanSchema } from "@/lib/services/meal-plan-repository";
+import { createShoppingItemsForMealPlan } from "@/lib/services/shopping-repository";
 import { configurationError, isDemoMode } from "@/lib/runtime-mode";
 
 export async function GET() {
@@ -18,7 +19,9 @@ export async function POST(request: Request) {
   if (!parsed.success) return NextResponse.json({ error: { code: "VALIDATION_ERROR", message: "Некорректное меню" } }, { status: 400 });
   if (!isSupabaseConfigured()) return isDemoMode() ? NextResponse.json({ source: "demo", id: crypto.randomUUID() }, { status: 201 }) : NextResponse.json(configurationError, { status: 503 });
   try {
-    return NextResponse.json({ source: "supabase", id: await saveMealPlan(parsed.data) }, { status: 201 });
+    const id = await saveMealPlan(parsed.data);
+    const shoppingItems = parsed.data.mode === "stores" ? await createShoppingItemsForMealPlan(id, parsed.data.plan) : [];
+    return NextResponse.json({ source: "supabase", id, shoppingItems }, { status: 201 });
   } catch (error) {
     console.error("Meal plan save failed", error);
     return NextResponse.json({ error: { code: "DATABASE_UNAVAILABLE", message: "Не удалось сохранить меню" } }, { status: 503 });

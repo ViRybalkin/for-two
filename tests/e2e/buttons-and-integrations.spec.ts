@@ -128,6 +128,10 @@ test("UI использует ответ модели и отправляет и
     });
   });
   await page.route("**/api/meal-plans", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", items: [] }) });
+      return;
+    }
     savedBody = route.request().postDataJSON();
     await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ source: "supabase", id: "plan-id" }) });
   });
@@ -146,6 +150,54 @@ test("UI использует ответ модели и отправляет и
   await page.getByRole("button", { name: "Сохранить меню" }).click();
   await expect(page.locator(".toast")).toContainText("Меню сохранено в базе");
   expect(savedBody).toMatchObject({ mode: "inventory", request: { days: 4, servings: 3 }, plan: { title: "Интеграционное меню" } });
+});
+
+test("сохранённое меню загружается, а недостающие продукты появляются в покупках", async ({ page }) => {
+  const plan = {
+    title: "Меню из магазина",
+    summary: { days: 1, servings: 2, estimatedTotalThb: 300, inventoryCoveragePercent: 0, budgetWarning: null },
+    dishes: [{ date: "2026-10-08", mealType: "dinner", title: "Карри с рисом", cookingMinutes: 30, difficulty: "easy", servings: 2, estimatedCostThb: 300, ingredients: [{ name: "Рис", quantity: 200, unit: "g", fromInventory: false }], instructions: ["Приготовить"], nutritionPerServing: { kcal: 500, proteinG: 20, fatG: 15, carbsG: 70, fiberG: 4 } }],
+    missingProducts: [{ name: "Рис", quantity: 200, unit: "g" }]
+  };
+  const request = { mode: "stores", days: 1, servings: 2, budgetThb: 1000, cuisines: ["тайская"], mealTypes: ["dinner"], inventory: [] };
+
+  await page.route("**/api/meal-plans", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", items: [{ id: "saved-plan", mode: "stores", request, plan }] }) });
+      return;
+    }
+    await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ source: "supabase", id: "saved-plan", shoppingItems: [{ id: "rice", name: "Рис", detail: "200 g", price: 300, bought: false, store: "Tops" }] }) });
+  });
+
+  await page.getByRole("button", { name: "Меню", exact: true }).click();
+  await expect(page.getByText("Карри с рисом", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Меню сохранено" })).toBeDisabled();
+});
+
+test("сохранение нового меню из магазинов обновляет покупки", async ({ page }) => {
+  await page.route("**/api/meal-plans", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", items: [] }) });
+      return;
+    }
+    await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ source: "supabase", id: "new-plan", shoppingItems: [{ id: "rice", name: "Рис", detail: "200 g", price: 300, bought: false, store: "Tops" }] }) });
+  });
+  await page.route("**/api/meal-plans/generate", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "openai", plan: {
+      title: "Новое меню",
+      summary: { days: 1, servings: 2, estimatedTotalThb: 300, inventoryCoveragePercent: 0, budgetWarning: null },
+      dishes: [{ date: "2026-10-08", mealType: "dinner", title: "Карри с рисом", cookingMinutes: 30, difficulty: "easy", servings: 2, estimatedCostThb: 300, ingredients: [{ name: "Рис", quantity: 200, unit: "g", fromInventory: false }], instructions: ["Приготовить"], nutritionPerServing: { kcal: 500, proteinG: 20, fatG: 15, carbsG: 70, fiberG: 4 } }],
+      missingProducts: [{ name: "Рис", quantity: 200, unit: "g" }]
+    } }) });
+  });
+
+  await page.getByRole("button", { name: "Меню", exact: true }).click();
+  await page.getByRole("button", { name: "Из магазинов" }).click();
+  await page.getByRole("button", { name: "Составить меню", exact: true }).click();
+  await page.getByRole("button", { name: "Сохранить меню" }).click();
+  await expect(page.getByRole("status")).toContainText("1 покупок добавлено");
+  await page.getByRole("button", { name: "Покупки", exact: true }).click();
+  await expect(page.getByText("Рис", { exact: true })).toBeVisible();
 });
 
 test("добавление продукта передаёт выбранные единицу и место хранения", async ({ page }) => {

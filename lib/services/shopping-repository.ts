@@ -1,6 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
+import type { GeneratedMealPlan } from "@/lib/schemas/meal-plan";
 
 export const shoppingItemInputSchema = z.object({
   name: z.string().trim().min(1).max(160),
@@ -69,6 +70,50 @@ export async function addShoppingItem(input: z.infer<typeof shoppingItemInputSch
   const { data, error } = await client.from("shopping_list_items").insert({ shopping_list_id: listId, product_id: product.id, planned_packages: 1, estimated_price_thb: input.price, purchased: false, department: input.detail }).select("id").single();
   if (error) throw error;
   return data.id as string;
+}
+
+export async function createShoppingItemsForMealPlan(mealPlanId: string, plan: GeneratedMealPlan) {
+  if (!plan.missingProducts.length) return listShoppingItems();
+
+  const client = getSupabaseAdmin();
+  const [householdId, storeRow] = await Promise.all([getHouseholdId(), getStore("Tops")]);
+  const { data: existingList, error: findError } = await client
+    .from("shopping_lists")
+    .select("id")
+    .eq("meal_plan_id", mealPlanId)
+    .eq("store_id", storeRow.id)
+    .maybeSingle();
+  if (findError) throw findError;
+  if (existingList) return listShoppingItems();
+
+  const { data: list, error: listError } = await client
+    .from("shopping_lists")
+    .insert({ household_id: householdId, meal_plan_id: mealPlanId, store_id: storeRow.id, status: "active" })
+    .select("id")
+    .single();
+  if (listError) throw listError;
+
+  const estimatedPrice = Math.round(plan.summary.estimatedTotalThb / plan.missingProducts.length);
+  for (const item of plan.missingProducts) {
+    const normalizedName = item.name.trim().toLowerCase();
+    const { data: product, error: productError } = await client
+      .from("products")
+      .upsert({ normalized_name: normalizedName, display_name_ru: item.name.trim(), default_unit: item.unit }, { onConflict: "normalized_name,default_unit" })
+      .select("id")
+      .single();
+    if (productError) throw productError;
+    const { error: itemError } = await client.from("shopping_list_items").insert({
+      shopping_list_id: list.id,
+      product_id: product.id,
+      planned_packages: 1,
+      estimated_price_thb: estimatedPrice,
+      purchased: false,
+      department: `${item.quantity} ${item.unit}`
+    });
+    if (itemError) throw itemError;
+  }
+
+  return listShoppingItems();
 }
 
 export async function updateShoppingItem(id: string, bought: boolean) {

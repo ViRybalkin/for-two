@@ -31,7 +31,30 @@ export async function saveMealPlan(input: z.infer<typeof saveMealPlanSchema>) {
 export async function listMealPlans() {
   const { data, error } = await getSupabaseAdmin().from("meal_plans").select("id,status,mode,date_from,date_to,budget_thb,parameters,created_at").order("created_at", { ascending: false }).limit(20);
   if (error) throw error;
-  return data || [];
+  return (data || []).flatMap((row) => {
+    const parameters = row.parameters && typeof row.parameters === "object" ? row.parameters as Record<string, unknown> : {};
+    const parsed = saveMealPlanSchema.safeParse({ mode: row.mode, request: parameters.request, plan: parameters.plan });
+    if (!parsed.success) return [];
+    return [{
+      id: row.id,
+      status: row.status,
+      mode: parsed.data.mode,
+      dateFrom: row.date_from,
+      dateTo: row.date_to,
+      budgetThb: row.budget_thb === null ? null : Number(row.budget_thb),
+      createdAt: row.created_at,
+      request: parsed.data.request,
+      plan: parsed.data.plan
+    }];
+  });
+}
+
+export async function getMealPlan(id: string) {
+  const { data, error } = await getSupabaseAdmin().from("meal_plans").select("id,status,mode,date_from,date_to,budget_thb,parameters,created_at").eq("id", id).single();
+  if (error) throw error;
+  const parameters = data.parameters && typeof data.parameters === "object" ? data.parameters as Record<string, unknown> : {};
+  const parsed = saveMealPlanSchema.parse({ mode: data.mode, request: parameters.request, plan: parameters.plan });
+  return { id: data.id as string, ...parsed };
 }
 
 export async function deleteMealPlan(id: string) {

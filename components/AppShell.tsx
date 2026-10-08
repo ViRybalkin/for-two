@@ -125,7 +125,7 @@ export function AppShell() {
       <div className="phone-surface">
         {tab === "today" && <TodayScreen onMenu={() => go("menu")} onInventory={() => go("inventory")} onRecipe={() => setSheet("recipe")} onAdd={() => setSheet("add")} onSettings={() => setSheet("settings")} notify={notify} />}
         {tab === "inventory" && <InventoryScreen items={inventory} setItems={setInventory} onAdd={() => setSheet("add")} notify={notify} />}
-        {tab === "menu" && <MenuScreen inventory={inventory} onRecipe={() => setSheet("recipe")} notify={notify} />}
+        {tab === "menu" && <MenuScreen inventory={inventory} setShopping={setShopping} onRecipe={() => setSheet("recipe")} notify={notify} />}
         {tab === "shopping" && <ShoppingScreen items={shopping} setItems={setShopping} notify={notify} onSearch={() => setSheet("catalog")} />}
         {tab === "more" && <MoreScreen onSettings={() => setSheet("settings")} notify={notify} />}
 
@@ -279,13 +279,14 @@ function InventoryScreen({ items, setItems, onAdd, notify }: { items: InventoryI
   );
 }
 
-function MenuScreen({ inventory, onRecipe, notify }: { inventory: InventoryItem[]; onRecipe: () => void; notify: (text: string) => void }) {
+function MenuScreen({ inventory, setShopping, onRecipe, notify }: { inventory: InventoryItem[]; setShopping: React.Dispatch<React.SetStateAction<ShoppingItem[]>>; onRecipe: () => void; notify: (text: string) => void }) {
   const [mode, setMode] = useState<"inventory" | "stores">("inventory");
   const [generated, setGenerated] = useState(false);
   const [loading, setLoading] = useState(false);
   const [plan, setPlan] = useState<GeneratedMealPlan | null>(null);
   const [lastRequest, setLastRequest] = useState<MealPlanRequest | null>(null);
   const [saving, setSaving] = useState(false);
+  const [savedPlanId, setSavedPlanId] = useState<string | null>(null);
   const [days, setDays] = useState(3);
   const [servings, setServings] = useState(2);
   const [cookingMinutes, setCookingMinutes] = useState(45);
@@ -293,6 +294,22 @@ function MenuScreen({ inventory, onRecipe, notify }: { inventory: InventoryItem[
   const [meals, setMeals] = useState(["Завтрак", "Обед", "Ужин"]);
   const [cuisines, setCuisines] = useState(["Тайская", "Средиземноморская"]);
   const [wish, setWish] = useState("");
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/meal-plans")
+      .then((response) => response.ok ? response.json() : null)
+      .then((data) => {
+        const saved = data?.source === "supabase" && Array.isArray(data.items) ? data.items[0] : null;
+        if (!active || !saved?.plan || !saved?.request) return;
+        setPlan(saved.plan);
+        setLastRequest(saved.request);
+        setMode(saved.mode);
+        setSavedPlanId(saved.id);
+        setGenerated(true);
+      })
+      .catch(() => null);
+    return () => { active = false; };
+  }, []);
   const toggleMeal = (meal: string) => setMeals((old) => old.includes(meal) ? old.filter((item) => item !== meal) : [...old, meal]);
   const toggleCuisine = (cuisine: string) => setCuisines((old) => old.includes(cuisine) ? old.filter((item) => item !== cuisine) : [...old, cuisine]);
   const generate = async () => {
@@ -318,6 +335,7 @@ function MenuScreen({ inventory, onRecipe, notify }: { inventory: InventoryItem[
       if (!response.ok) throw new Error(data?.error?.message || "Не удалось составить меню");
       setPlan(data.plan || null);
       setLastRequest(requestData);
+      setSavedPlanId(null);
       setGenerated(true);
       notify(data.source === "openai" ? "Меню создано моделью OpenAI" : "Черновик меню готов");
     } catch (error) {
@@ -333,7 +351,9 @@ function MenuScreen({ inventory, onRecipe, notify }: { inventory: InventoryItem[
       const response = await fetch("/api/meal-plans", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode, request: lastRequest, plan }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error?.message || "Не удалось сохранить меню");
-      notify("Меню сохранено в базе");
+      setSavedPlanId(data.id || null);
+      if (Array.isArray(data.shoppingItems)) setShopping(data.shoppingItems);
+      notify(mode === "stores" ? `Меню сохранено · ${data.shoppingItems?.length || 0} покупок добавлено` : "Меню сохранено в базе");
     } catch (error) {
       notify(error instanceof Error ? error.message : "Не удалось сохранить меню");
     } finally {
@@ -356,12 +376,12 @@ function MenuScreen({ inventory, onRecipe, notify }: { inventory: InventoryItem[
         <label className="wish-field"><span>Пожелание</span><textarea value={wish} onChange={(event) => setWish(event.target.value)} placeholder="Например: больше овощей, без острого…" /></label>
         <button className="main-action" disabled={loading || meals.length === 0 || cuisines.length === 0} onClick={generate}>{loading ? <span className="spinner" /> : <Sparkles size={20} />}{loading ? "Составляем меню…" : "Составить меню"}</button>
         <p className="fine-print">Результат можно изменить перед сохранением</p>
-      </> : <GeneratedMenu plan={plan} onRecipe={onRecipe} onReset={() => setGenerated(false)} onSave={() => void save()} saving={saving} mode={mode} notify={notify} />}
+      </> : <GeneratedMenu plan={plan} onRecipe={onRecipe} onReset={() => { setGenerated(false); setSavedPlanId(null); }} onSave={() => void save()} saving={saving} saved={Boolean(savedPlanId)} mode={mode} notify={notify} />}
     </section>
   );
 }
 
-function GeneratedMenu({ plan, onRecipe, onReset, onSave, saving, mode, notify }: { plan: GeneratedMealPlan | null; onRecipe: () => void; onReset: () => void; onSave: () => void; saving: boolean; mode: string; notify: (t: string) => void }) {
+function GeneratedMenu({ plan, onRecipe, onReset, onSave, saving, saved, mode, notify }: { plan: GeneratedMealPlan | null; onRecipe: () => void; onReset: () => void; onSave: () => void; saving: boolean; saved: boolean; mode: string; notify: (t: string) => void }) {
   const fallbackDays = [
     { date: "Сегодня · 8 окт.", meals: [["Завтрак", "Йогурт с манго и гранолой", "12 мин"], ["Обед", "Тёплый салат с курицей", "25 мин"], ["Ужин", "Пад крапао с рисом", "30 мин"]] },
     { date: "Завтра · 9 окт.", meals: [["Завтрак", "Омлет с томатами", "15 мин"], ["Обед", "Кокосовый суп с креветками", "35 мин"], ["Ужин", "Запечённая рыба с овощами", "40 мин"]] },
@@ -378,7 +398,7 @@ function GeneratedMenu({ plan, onRecipe, onReset, onSave, saving, mode, notify }
   return <>
     <div className="result-banner"><div><Check size={19} /><span><b>Меню готово</b><small>{summary}</small></span></div><button onClick={onReset}>Изменить</button></div>
     <div className="days-list">{days.map((day) => <section key={day.date} className="day-card"><h3>{day.date}</h3>{day.meals.map(([type, name, time], index) => <button key={`${day.date}-${name}`} className="meal-row" onClick={name.toLowerCase().includes("пад крапао") ? onRecipe : () => notify(`Рецепт «${name}» выбран`)}><span className={`meal-dot dot-${index}`} /><span className="meal-content"><small>{type}</small><b>{name}</b><em><Clock3 size={13} />{time}</em></span><ChevronRight size={18} /></button>)}</section>)}</div>
-    <div className="sticky-actions"><button className="secondary-action" onClick={onReset} disabled={saving}>Заново</button><button className="main-action" onClick={onSave} disabled={saving || !plan}>{saving ? "Сохраняем…" : "Сохранить меню"}</button></div>
+    <div className="sticky-actions"><button className="secondary-action" onClick={onReset} disabled={saving}>Заново</button><button className="main-action" onClick={onSave} disabled={saving || !plan || saved}>{saving ? "Сохраняем…" : saved ? "Меню сохранено" : "Сохранить меню"}</button></div>
   </>;
 }
 
