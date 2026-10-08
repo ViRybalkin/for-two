@@ -4,6 +4,8 @@ import { listMealPlans, saveMealPlan, saveMealPlanSchema } from "@/lib/services/
 import { createShoppingItemsForMealPlan } from "@/lib/services/shopping-repository";
 import { configurationError, isDemoMode } from "@/lib/runtime-mode";
 
+export const maxDuration = 60;
+
 export async function GET() {
   if (!isSupabaseConfigured()) return isDemoMode() ? NextResponse.json({ source: "demo", items: [] }) : NextResponse.json(configurationError, { status: 503 });
   try {

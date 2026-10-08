@@ -84,34 +84,51 @@ export async function createShoppingItemsForMealPlan(mealPlanId: string, plan: G
     .eq("store_id", storeRow.id)
     .maybeSingle();
   if (findError) throw findError;
-  if (existingList) return listShoppingItems();
-
-  const { data: list, error: listError } = await client
-    .from("shopping_lists")
-    .insert({ household_id: householdId, meal_plan_id: mealPlanId, store_id: storeRow.id, status: "active" })
-    .select("id")
-    .single();
-  if (listError) throw listError;
-
-  const estimatedPrice = Math.round(plan.summary.estimatedTotalThb / plan.missingProducts.length);
-  for (const item of plan.missingProducts) {
-    const normalizedName = item.name.trim().toLowerCase();
-    const { data: product, error: productError } = await client
-      .from("products")
-      .upsert({ normalized_name: normalizedName, display_name_ru: item.name.trim(), default_unit: item.unit }, { onConflict: "normalized_name,default_unit" })
+  let listId = existingList?.id as string | undefined;
+  if (listId) {
+    const { data: existingItem, error: existingItemError } = await client.from("shopping_list_items").select("id").eq("shopping_list_id", listId).limit(1).maybeSingle();
+    if (existingItemError) throw existingItemError;
+    if (existingItem) return listShoppingItems();
+  } else {
+    const { data: list, error: listError } = await client
+      .from("shopping_lists")
+      .insert({ household_id: householdId, meal_plan_id: mealPlanId, store_id: storeRow.id, status: "active" })
       .select("id")
       .single();
-    if (productError) throw productError;
-    const { error: itemError } = await client.from("shopping_list_items").insert({
-      shopping_list_id: list.id,
-      product_id: product.id,
+    if (listError) throw listError;
+    listId = list.id as string;
+  }
+
+  const combined = new Map<string, { name: string; normalizedName: string; quantity: number; unit: "g" | "ml" | "piece" }>();
+  for (const item of plan.missingProducts) {
+    const normalizedName = item.name.trim().toLowerCase();
+    const key = `${normalizedName}:${item.unit}`;
+    const current = combined.get(key);
+    combined.set(key, current ? { ...current, quantity: current.quantity + item.quantity } : { name: item.name.trim(), normalizedName, quantity: item.quantity, unit: item.unit });
+  }
+  const productsToSave = [...combined.values()];
+  const { data: products, error: productError } = await client
+    .from("products")
+    .upsert(productsToSave.map((item) => ({ normalized_name: item.normalizedName, display_name_ru: item.name, default_unit: item.unit })), { onConflict: "normalized_name,default_unit" })
+    .select("id,normalized_name,default_unit");
+  if (productError) throw productError;
+
+  const productByKey = new Map((products || []).map((product) => [`${product.normalized_name}:${product.default_unit}`, product.id]));
+  const estimatedPrice = Math.round(plan.summary.estimatedTotalThb / productsToSave.length);
+  const shoppingItems = productsToSave.map((item) => {
+    const productId = productByKey.get(`${item.normalizedName}:${item.unit}`);
+    if (!productId) throw new Error(`Product was not persisted: ${item.normalizedName}`);
+    return {
+      shopping_list_id: listId,
+      product_id: productId,
       planned_packages: 1,
       estimated_price_thb: estimatedPrice,
       purchased: false,
       department: `${item.quantity} ${item.unit}`
-    });
-    if (itemError) throw itemError;
-  }
+    };
+  });
+  const { error: itemError } = await client.from("shopping_list_items").insert(shoppingItems);
+  if (itemError) throw itemError;
 
   return listShoppingItems();
 }

@@ -58,6 +58,16 @@ export async function getMealPlan(id: string) {
 }
 
 export async function deleteMealPlan(id: string) {
-  const { error } = await getSupabaseAdmin().from("meal_plans").delete().eq("id", id);
+  const client = getSupabaseAdmin();
+  const { data: lists, error: listLookupError } = await client.from("shopping_lists").select("id").eq("meal_plan_id", id);
+  if (listLookupError) throw listLookupError;
+  const listIds = (lists || []).map((list) => list.id);
+  if (listIds.length) {
+    const { error: itemError } = await client.from("shopping_list_items").delete().in("shopping_list_id", listIds);
+    if (itemError) throw itemError;
+    const { error: listError } = await client.from("shopping_lists").delete().in("id", listIds);
+    if (listError) throw listError;
+  }
+  const { error } = await client.from("meal_plans").delete().eq("id", id);
   if (error) throw error;
 }
