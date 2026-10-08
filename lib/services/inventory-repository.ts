@@ -1,6 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
+import { isSupabaseServerConfigured } from "@/lib/integration-config";
 
 export const inventoryInputSchema = z.object({
   name: z.string().trim().min(1).max(120),
@@ -16,7 +17,7 @@ const storageToDb = { "Холодильник": "fridge", "Морозильни�
 const storageFromDb = { fridge: "Холодильник", freezer: "Морозильник", pantry: "Кладовая" } as const;
 
 export function isSupabaseConfigured() {
-  return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SECRET_KEY);
+  return isSupabaseServerConfigured();
 }
 
 export async function listInventory() {
