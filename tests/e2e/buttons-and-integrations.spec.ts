@@ -57,6 +57,24 @@ test("все видимые кнопки доступны для клика во
 });
 
 test("ранее пустые кнопки дают наблюдаемый результат", async ({ page }) => {
+  const dish = { date: "2026-10-08", mealType: "dinner", title: "Тестовое карри", cookingMinutes: 25, difficulty: "easy", servings: 2, estimatedCostThb: 180, ingredients: [{ name: "Рис", quantity: 200, unit: "g", fromInventory: true }], instructions: ["Приготовить"], nutritionPerServing: { kcal: 450, proteinG: 20, fatG: 12, carbsG: 60, fiberG: 4 } };
+  const plan = { title: "Меню на сегодня", summary: { days: 1, servings: 2, estimatedTotalThb: 180, inventoryCoveragePercent: 100, budgetWarning: null }, dishes: [dish], missingProducts: [] };
+  const request = { mode: "inventory", days: 1, servings: 2, cuisines: ["тайская"], mealTypes: ["dinner"], inventory: [] };
+  await page.route("**/api/meal-plans", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", items: [{ id: "plan", mode: "inventory", request, plan, completed: [] }] }) });
+  });
+  await page.route("**/api/inventory", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", items: [{ id: "rice", name: "Рис", quantity: 600, unit: "г", storage: "Кладовая", expiry: "срок не указан", icon: "🍚" }] }) });
+      return;
+    }
+    await route.continue();
+  });
+  await page.route("**/api/inventory/rice", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", quantity: 650 }) });
+  });
+  await page.reload();
+
   await page.getByRole("button", { name: "Добавить в любимые" }).click();
   await expect(page.getByRole("status")).toContainText("добавлен в любимые");
 
@@ -70,13 +88,14 @@ test("ранее пустые кнопки дают наблюдаемый ре�
   await page.getByRole("button", { name: "Все", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Запасы" })).toBeVisible();
 
-  const chicken = page.getByText("Куриное филе", { exact: true }).locator("xpath=ancestor::article");
-  const quantity = chicken.locator(".quantity-control strong");
-  await expect(quantity).toContainText("620 г");
-  await chicken.getByRole("button", { name: "Увеличить Куриное филе" }).click();
-  await expect(quantity).toContainText("670 г");
+  const rice = page.getByText("Рис", { exact: true }).locator("xpath=ancestor::article");
+  const quantity = rice.locator(".quantity-control strong");
+  await expect(quantity).toContainText("600 г");
+  await rice.getByRole("button", { name: "Увеличить Рис" }).click();
+  await expect(quantity).toContainText("650 г");
 
   await page.getByRole("button", { name: "Меню", exact: true }).click();
+  await page.getByRole("button", { name: "Изменить" }).click();
   await page.getByRole("button", { name: "Открыть календарь" }).click();
   await expect(page.locator(".toast")).toContainText("Период меню");
   const period = page.getByRole("group", { name: "Период" });

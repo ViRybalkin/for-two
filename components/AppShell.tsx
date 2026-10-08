@@ -58,42 +58,6 @@ type CatalogProduct = { store: "tops" | "makro"; originalName: string; packageTe
 type MealDish = GeneratedMealPlan["dishes"][number];
 type SavedMealPlan = { id: string; mode: "inventory" | "stores"; request: MealPlanRequest; plan: GeneratedMealPlan; completed: string[] };
 
-const fallbackDish: MealDish = {
-  date: "2026-10-08",
-  mealType: "dinner",
-  title: "Пад крапао с жасминовым рисом",
-  cookingMinutes: 30,
-  difficulty: "medium",
-  servings: 2,
-  estimatedCostThb: 184,
-  ingredients: [
-    { name: "Куриное филе", quantity: 400, unit: "g", fromInventory: true },
-    { name: "Жасминовый рис", quantity: 180, unit: "g", fromInventory: true },
-    { name: "Свежий базилик", quantity: 30, unit: "g", fromInventory: false },
-    { name: "Чеснок", quantity: 12, unit: "g", fromInventory: true }
-  ],
-  instructions: ["Промойте рис и приготовьте в рисоварке до мягкости.", "Нарежьте курицу и обжарьте до золотистой корочки.", "Добавьте чеснок, соус и листья базилика."],
-  nutritionPerServing: { kcal: 640, proteinG: 42, fatG: 19, carbsG: 72, fiberG: 4 }
-};
-
-const initialInventory: InventoryItem[] = [
-  { id: "1", name: "Куриное филе", quantity: 620, unit: "г", storage: "Холодильник", expiry: "осталось 2 дня", icon: "🍗" },
-  { id: "2", name: "Томаты черри", quantity: 280, unit: "г", storage: "Холодильник", expiry: "осталось 3 дня", icon: "🍅" },
-  { id: "3", name: "Жасминовый рис", quantity: 1200, unit: "г", storage: "Кладовая", expiry: "до 12 мая", icon: "🍚" },
-  { id: "4", name: "Кокосовое молоко", quantity: 400, unit: "мл", storage: "Кладовая", expiry: "до 18 янв.", icon: "🥥" },
-  { id: "5", name: "Яйца", quantity: 8, unit: "шт", storage: "Холодильник", expiry: "осталось 6 дней", icon: "🥚" },
-  { id: "6", name: "Креветки", quantity: 350, unit: "г", storage: "Морозильник", expiry: "до 22 нояб.", icon: "🍤" }
-];
-
-const initialShopping: ShoppingItem[] = [
-  { id: "s1", name: "Свежий базилик", detail: "1 упаковка · овощи", price: 45, bought: false, store: "Tops" },
-  { id: "s2", name: "Лайм", detail: "4 шт · овощи", price: 52, bought: true, store: "Tops" },
-  { id: "s3", name: "Греческий йогурт", detail: "450 г · молочное", price: 129, bought: false, store: "Tops" },
-  { id: "s4", name: "Куриное филе", detail: "2 × 1 кг · мясо", price: 358, bought: false, store: "Makro" },
-  { id: "s5", name: "Жасминовый рис", detail: "1 × 5 кг · бакалея", price: 219, bought: false, store: "Makro" },
-  { id: "s6", name: "Замороженные овощи", detail: "1 кг · заморозка", price: 148, bought: true, store: "Makro" }
-];
-
 const nav = [
   { id: "today" as const, label: "Сегодня", icon: Home },
   { id: "inventory" as const, label: "Запасы", icon: Archive },
@@ -104,15 +68,19 @@ const nav = [
 
 export function AppShell() {
   const [tab, setTab] = useState<Tab>("today");
-  const [inventory, setInventory] = useState(initialInventory);
-  const [shopping, setShopping] = useState(initialShopping);
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [shopping, setShopping] = useState<ShoppingItem[]>([]);
   const [savedPlan, setSavedPlan] = useState<SavedMealPlan | null>(null);
+  const [inventoryLoading, setInventoryLoading] = useState(true);
+  const [shoppingLoading, setShoppingLoading] = useState(true);
+  const [planLoading, setPlanLoading] = useState(true);
+  const [localStateReady, setLocalStateReady] = useState(false);
   const [selectedDish, setSelectedDish] = useState<MealDish | null>(null);
   const [sheet, setSheet] = useState<"add" | "settings" | "recipe" | "catalog" | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
-    const saved = window.localStorage.getItem("na-dvoih-state-v2");
+    const saved = window.localStorage.getItem("na-dvoih-state-v3");
     if (saved) {
       try {
         const data = JSON.parse(saved) as { inventory: InventoryItem[]; shopping: ShoppingItem[] };
@@ -120,30 +88,35 @@ export function AppShell() {
         if (data.shopping) setShopping(data.shopping);
       } catch { /* preserve safe defaults */ }
     }
+    window.localStorage.removeItem("na-dvoih-state-v2");
+    setLocalStateReady(true);
     void fetch("/api/inventory")
       .then((response) => response.ok ? response.json() : null)
       .then((data) => {
         if (data?.source === "supabase" && Array.isArray(data.items)) setInventory(data.items);
       })
-      .catch(() => null);
+      .catch(() => null)
+      .finally(() => setInventoryLoading(false));
     void fetch("/api/shopping")
       .then((response) => response.ok ? response.json() : null)
       .then((data) => {
         if (data?.source === "supabase" && Array.isArray(data.items)) setShopping(data.items);
       })
-      .catch(() => null);
+      .catch(() => null)
+      .finally(() => setShoppingLoading(false));
     void fetch("/api/meal-plans")
       .then((response) => response.ok ? response.json() : null)
       .then((data) => {
         const latest = data?.source === "supabase" && Array.isArray(data.items) ? data.items[0] : null;
         if (latest?.plan && latest?.request) setSavedPlan({ ...latest, completed: Array.isArray(latest.completed) ? latest.completed : [] });
       })
-      .catch(() => null);
+      .catch(() => null)
+      .finally(() => setPlanLoading(false));
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem("na-dvoih-state-v2", JSON.stringify({ inventory, shopping }));
-  }, [inventory, shopping]);
+    if (localStateReady) window.localStorage.setItem("na-dvoih-state-v3", JSON.stringify({ inventory, shopping }));
+  }, [inventory, shopping, localStateReady]);
 
   const notify = (message: string) => {
     setToast(message);
@@ -185,10 +158,10 @@ export function AppShell() {
   return (
     <main className="site-shell">
       <div className="phone-surface">
-        {tab === "today" && <TodayScreen savedPlan={savedPlan} inventory={inventory} onMenu={() => go("menu")} onInventory={() => go("inventory")} onRecipe={openRecipe} onAdd={() => setSheet("add")} onSettings={() => setSheet("settings")} notify={notify} />}
-        {tab === "inventory" && <InventoryScreen items={inventory} setItems={setInventory} onAdd={() => setSheet("add")} notify={notify} />}
+        {tab === "today" && <TodayScreen savedPlan={savedPlan} inventory={inventory} loading={planLoading} onMenu={() => go("menu")} onInventory={() => go("inventory")} onRecipe={openRecipe} onAdd={() => setSheet("add")} onSettings={() => setSheet("settings")} notify={notify} />}
+        {tab === "inventory" && <InventoryScreen items={inventory} loading={inventoryLoading} setItems={setInventory} onAdd={() => setSheet("add")} notify={notify} />}
         {tab === "menu" && <MenuScreen inventory={inventory} setShopping={setShopping} savedPlan={savedPlan} onPlanSaved={setSavedPlan} onRecipe={openRecipe} notify={notify} />}
-        {tab === "shopping" && <ShoppingScreen items={shopping} setItems={setShopping} notify={notify} onSearch={() => setSheet("catalog")} />}
+        {tab === "shopping" && <ShoppingScreen items={shopping} loading={shoppingLoading} setItems={setShopping} notify={notify} onSearch={() => setSheet("catalog")} />}
         {tab === "more" && <MoreScreen onSettings={() => setSheet("settings")} notify={notify} />}
 
         <nav className="bottom-nav" aria-label="Основная навигация">
@@ -219,7 +192,7 @@ export function AppShell() {
         }
       }} />}
       {sheet === "settings" && <SettingsSheet onClose={() => setSheet(null)} notify={notify} />}
-      {sheet === "recipe" && <RecipeView dish={selectedDish || fallbackDish} completed={Boolean(selectedDish && savedPlan?.completed.includes(getMealDishKey(selectedDish.date, selectedDish.mealType)))} onComplete={completeDish} onClose={() => setSheet(null)} notify={notify} />}
+      {sheet === "recipe" && selectedDish && <RecipeView dish={selectedDish} completed={Boolean(savedPlan?.completed.includes(getMealDishKey(selectedDish.date, selectedDish.mealType)))} onComplete={completeDish} onClose={() => setSheet(null)} notify={notify} />}
       {sheet === "catalog" && <CatalogSearchSheet onClose={() => setSheet(null)} onAdd={async (product) => {
         const item = { id: crypto.randomUUID(), name: product.originalName, detail: product.packageText || "фасовка не указана", price: product.priceThb || 0, bought: false, store: (product.store === "tops" ? "Tops" : "Makro") as ShoppingItem["store"] };
         try {
@@ -249,15 +222,14 @@ function BrandHeader({ title, subtitle, action }: { title: string; subtitle?: st
   );
 }
 
-function TodayScreen({ savedPlan, inventory, onMenu, onInventory, onRecipe, onAdd, onSettings, notify }: { savedPlan: SavedMealPlan | null; inventory: InventoryItem[]; onMenu: () => void; onInventory: () => void; onRecipe: (dish: MealDish) => void; onAdd: () => void; onSettings: () => void; notify: (text: string) => void }) {
+function TodayScreen({ savedPlan, inventory, loading, onMenu, onInventory, onRecipe, onAdd, onSettings, notify }: { savedPlan: SavedMealPlan | null; inventory: InventoryItem[]; loading: boolean; onMenu: () => void; onInventory: () => void; onRecipe: (dish: MealDish) => void; onAdd: () => void; onSettings: () => void; notify: (text: string) => void }) {
   const [slideIndex, setSlideIndex] = useState(0);
   const today = getBangkokDate();
   const todayDishes = savedPlan?.plan.dishes.filter((dish) => dish.date === today) || [];
   const completed = savedPlan?.completed || [];
   const firstPending = todayDishes.findIndex((dish) => !completed.includes(getMealDishKey(dish.date, dish.mealType)));
   const orderedDishes = firstPending > 0 ? [...todayDishes.slice(firstPending), ...todayDishes.slice(0, firstPending)] : todayDishes;
-  const slides = orderedDishes.length ? orderedDishes : [fallbackDish];
-  const dish = slides[slideIndex % slides.length];
+  const dish = orderedDishes.length ? orderedDishes[slideIndex % orderedDishes.length] : null;
   const mealNames = { breakfast: "Завтрак", lunch: "Обед", dinner: "Ужин", snack: "Перекус" } as const;
   const currentDate = new Intl.DateTimeFormat("ru-RU", { timeZone: "Asia/Bangkok", weekday: "long", day: "numeric", month: "long" }).format(new Date());
   const expiringItems = inventory.filter((item) => item.quantity > 0 && item.expiry !== "срок не указан").slice(0, 2);
@@ -265,20 +237,20 @@ function TodayScreen({ savedPlan, inventory, onMenu, onInventory, onRecipe, onAd
   return (
     <section className="screen today-screen">
       <BrandHeader title="Доброе утро" subtitle={currentDate} action={<button className="avatar" aria-label="Общие настройки" onClick={onSettings}>В + Д</button>} />
-      <div className="location-chip"><span>Пхукет</span><span>•</span><span>сегодня {todayDishes.length || 1} приёма пищи</span></div>
+      <div className="location-chip"><span>Пхукет</span><span>•</span><span>сегодня {todayDishes.length} приёмов пищи</span></div>
 
-      <Swiper
+      {loading ? <div className="today-plan-state"><span className="spinner" /><b>Загружаем меню на сегодня…</b></div> : orderedDishes.length ? <><Swiper
         key={`${savedPlan?.id || "fallback"}-${completed.join("|")}`}
         className="meal-swiper"
         modules={[Navigation, Pagination, A11y]}
         slidesPerView={1}
         spaceBetween={14}
-        navigation={slides.length > 1}
-        pagination={slides.length > 1 ? { clickable: true } : false}
+        navigation={orderedDishes.length > 1}
+        pagination={orderedDishes.length > 1 ? { clickable: true } : false}
         onSlideChange={(swiper) => setSlideIndex(swiper.activeIndex)}
         aria-label="Блюда на сегодня"
       >
-        {slides.map((slideDish) => {
+        {orderedDishes.map((slideDish) => {
           const completedSlide = completed.includes(getMealDishKey(slideDish.date, slideDish.mealType));
           const specificPhoto = slideDish.title.toLowerCase().includes("пад крапао");
           return <SwiperSlide key={getMealDishKey(slideDish.date, slideDish.mealType)}>
@@ -297,12 +269,12 @@ function TodayScreen({ savedPlan, inventory, onMenu, onInventory, onRecipe, onAd
         })}
       </Swiper>
 
-      <div className="nutrition-row" aria-label="Пищевая ценность порции">
+      {dish && <div className="nutrition-row" aria-label="Пищевая ценность порции">
         <Metric value={`${Math.round(dish.nutritionPerServing.kcal)}`} label="ккал" />
         <Metric value={`${Math.round(dish.nutritionPerServing.proteinG)} г`} label="белки" />
         <Metric value={`${Math.round(dish.nutritionPerServing.fatG)} г`} label="жиры" />
         <Metric value={`${Math.round(dish.nutritionPerServing.carbsG)} г`} label="углеводы" />
-      </div>
+      </div>}</> : <div className="today-plan-state"><CookingPot size={32} /><b>На сегодня блюд нет</b><span>Составьте и сохраните меню — блюда появятся здесь</span><button className="secondary-action" onClick={onMenu}>Составить меню</button></div>}
 
       <div className="section-heading"><div><p className="eyebrow">БЫСТРЫЕ ДЕЙСТВИЯ</p><h2>Что делаем?</h2></div></div>
       <div className="quick-grid">
@@ -327,7 +299,7 @@ function Metric({ value, label }: { value: string; label: string }) {
   return <div><strong>{value}</strong><span>{label}</span></div>;
 }
 
-function InventoryScreen({ items, setItems, onAdd, notify }: { items: InventoryItem[]; setItems: React.Dispatch<React.SetStateAction<InventoryItem[]>>; onAdd: () => void; notify: (text: string) => void }) {
+function InventoryScreen({ items, loading, setItems, onAdd, notify }: { items: InventoryItem[]; loading: boolean; setItems: React.Dispatch<React.SetStateAction<InventoryItem[]>>; onAdd: () => void; notify: (text: string) => void }) {
   const [query, setQuery] = useState("");
   const [storage, setStorage] = useState<"Все" | Storage>("Все");
   const [pendingId, setPendingId] = useState<string | null>(null);
@@ -361,15 +333,16 @@ function InventoryScreen({ items, setItems, onAdd, notify }: { items: InventoryI
       <div className="filter-scroll">
         {(["Все", "Холодильник", "Морозильник", "Кладовая"] as const).map((item) => <button key={item} className={storage === item ? "filter-chip active" : "filter-chip"} onClick={() => setStorage(item)}>{item}</button>)}
       </div>
-      <div className="inventory-summary"><div><Package size={20} /><span><b>{items.length}</b> позиций</span></div><div><Clock3 size={20} /><span><b>2</b> скоро использовать</span></div></div>
+      <div className="inventory-summary"><div><Package size={20} /><span><b>{items.length}</b> позиций</span></div><div><Clock3 size={20} /><span><b>{items.filter((item) => item.quantity > 0 && item.expiry !== "срок не указан").length}</b> скоро использовать</span></div></div>
       <div className="inventory-list">
+        {loading && <div className="catalog-message">Загружаем запасы…</div>}
         {visible.map((item) => (
           <article className="inventory-item" key={item.id}>
             <span className="food-icon">{item.icon}</span>
             <div className="item-main"><b>{item.name}</b><span>{item.storage} · {item.expiry}</span><div className="quantity-control"><button disabled={pendingId === item.id} onClick={() => void adjust(item.id, -1)} aria-label={`Уменьшить ${item.name}`}><Minus size={15} /></button><strong>{item.quantity} {item.unit}</strong><button disabled={pendingId === item.id} onClick={() => void adjust(item.id, 1)} aria-label={`Увеличить ${item.name}`}><Plus size={15} /></button></div></div>
           </article>
         ))}
-        {!visible.length && <EmptyState icon={<Search />} title="Ничего не найдено" text="Измените запрос или место хранения" />}
+        {!loading && !visible.length && <EmptyState icon={items.length ? <Search /> : <Package />} title={items.length ? "Ничего не найдено" : "Запасов пока нет"} text={items.length ? "Измените запрос или место хранения" : "Добавьте первый продукт вручную"} />}
       </div>
     </section>
   );
@@ -471,19 +444,13 @@ function MenuScreen({ inventory, setShopping, savedPlan, onPlanSaved, onRecipe, 
 }
 
 function GeneratedMenu({ plan, onRecipe, onReset, onSave, saving, saved, mode }: { plan: GeneratedMealPlan | null; onRecipe: (dish: MealDish) => void; onReset: () => void; onSave: () => void; saving: boolean; saved: boolean; mode: string; notify: (t: string) => void }) {
-  const fallbackDays = [
-    { date: "Сегодня · 8 окт.", meals: [["Завтрак", "Йогурт с манго и гранолой", "12 мин"], ["Обед", "Тёплый салат с курицей", "25 мин"], ["Ужин", "Пад крапао с рисом", "30 мин"]] },
-    { date: "Завтра · 9 окт.", meals: [["Завтрак", "Омлет с томатами", "15 мин"], ["Обед", "Кокосовый суп с креветками", "35 мин"], ["Ужин", "Запечённая рыба с овощами", "40 мин"]] },
-    { date: "Пятница · 10 окт.", meals: [["Завтрак", "Рисовая каша с бананом", "20 мин"], ["Обед", "Боул с курицей и лаймом", "25 мин"], ["Ужин", "Паста с томатами", "35 мин"]] }
-  ];
   const mealNames = { breakfast: "Завтрак", lunch: "Обед", dinner: "Ужин", snack: "Перекус" } as const;
-  const days = plan ? Object.entries(plan.dishes.reduce<Record<string, Array<{ type: string; name: string; time: string; dish: MealDish }>>>((result, dish) => {
+  if (!plan) return <EmptyState icon={<CookingPot />} title="Меню не загрузилось" text="Вернитесь к параметрам и составьте меню ещё раз" />;
+  const days = Object.entries(plan.dishes.reduce<Record<string, Array<{ type: string; name: string; time: string; dish: MealDish }>>>((result, dish) => {
     (result[dish.date] ||= []).push({ type: mealNames[dish.mealType], name: dish.title, time: `${dish.cookingMinutes} мин`, dish });
     return result;
-  }, {})).map(([date, meals]) => ({ date, meals })) : fallbackDays.map((day) => ({ ...day, meals: day.meals.map(([type, name, time]) => ({ type, name, time, dish: fallbackDish })) }));
-  const summary = plan
-    ? mode === "stores" ? `${Math.round(plan.summary.estimatedTotalThb)} ฿ · ${plan.summary.budgetWarning || "оценка модели"}` : `${Math.round(plan.summary.inventoryCoveragePercent)}% продуктов уже дома`
-    : mode === "stores" ? "1 286 ฿ · в пределах бюджета" : "82% продуктов уже дома";
+  }, {})).map(([date, meals]) => ({ date, meals }));
+  const summary = mode === "stores" ? `${Math.round(plan.summary.estimatedTotalThb)} ฿ · ${plan.summary.budgetWarning || "оценка модели"}` : `${Math.round(plan.summary.inventoryCoveragePercent)}% продуктов уже дома`;
   return <>
     <div className="result-banner"><div><Check size={19} /><span><b>Меню готово</b><small>{summary}</small></span></div><button onClick={onReset}>Изменить</button></div>
     <div className="days-list">{days.map((day) => <section key={day.date} className="day-card"><h3>{day.date}</h3>{day.meals.map(({ type, name, time, dish }, index) => <button key={`${day.date}-${name}`} className="meal-row" onClick={() => onRecipe(dish)}><span className={`meal-dot dot-${index}`} /><span className="meal-content"><small>{type}</small><b>{name}</b><em><Clock3 size={13} />{time}</em></span><ChevronRight size={18} /></button>)}</section>)}</div>
@@ -491,7 +458,7 @@ function GeneratedMenu({ plan, onRecipe, onReset, onSave, saving, saved, mode }:
   </>;
 }
 
-function ShoppingScreen({ items, setItems, notify, onSearch }: { items: ShoppingItem[]; setItems: React.Dispatch<React.SetStateAction<ShoppingItem[]>>; notify: (text: string) => void; onSearch: () => void }) {
+function ShoppingScreen({ items, loading, setItems, notify, onSearch }: { items: ShoppingItem[]; loading: boolean; setItems: React.Dispatch<React.SetStateAction<ShoppingItem[]>>; notify: (text: string) => void; onSearch: () => void }) {
   const [store, setStore] = useState<"Tops" | "Makro">("Tops");
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [completing, setCompleting] = useState(false);
@@ -534,7 +501,7 @@ function ShoppingScreen({ items, setItems, notify, onSearch }: { items: Shopping
       <BrandHeader title="Покупки" subtitle={`${items.length} ${items.length % 10 === 1 && items.length % 100 !== 11 ? "товар" : items.length % 10 >= 2 && items.length % 10 <= 4 && (items.length % 100 < 12 || items.length % 100 > 14) ? "товара" : "товаров"} в активном списке`} action={<button className="icon-button" onClick={onSearch} aria-label="Найти товар в магазинах"><Plus /></button>} />
       <div className="store-tabs"><button className={store === "Tops" ? "active tops" : ""} onClick={() => setStore("Tops")}><span>T</span><b>Tops</b><small>{items.filter((i) => i.store === "Tops").length} товаров</small></button><button className={store === "Makro" ? "active makro" : ""} onClick={() => setStore("Makro")}><span>M</span><b>Makro</b><small>{items.filter((i) => i.store === "Makro").length} товаров</small></button></div>
       <div className="shop-progress"><div><span>Собрано {done} из {visible.length}</span><b>≈ {total} ฿</b></div><div className="progress-track"><i style={{ width: `${visible.length ? (done / visible.length) * 100 : 0}%` }} /></div></div>
-      <div className="shopping-list">{visible.map((item) => <label key={item.id} className={item.bought ? "shopping-item bought" : "shopping-item"}><input type="checkbox" checked={item.bought} disabled={pendingId === item.id} onChange={() => void toggle(item.id)} /><span className="fake-check"><Check size={15} /></span><span><b>{item.name}</b><small>{item.detail}</small></span><strong>{item.price} ฿</strong></label>)}{!visible.length && <EmptyState icon={<ShoppingBasket />} title="Список пуст" text="Добавьте товары из официальных каталогов" />}</div>
+      <div className="shopping-list">{loading && <div className="catalog-message">Загружаем покупки…</div>}{visible.map((item) => <label key={item.id} className={item.bought ? "shopping-item bought" : "shopping-item"}><input type="checkbox" checked={item.bought} disabled={pendingId === item.id} onChange={() => void toggle(item.id)} /><span className="fake-check"><Check size={15} /></span><span><b>{item.name}</b><small>{item.detail}</small></span><strong>{item.price} ฿</strong></label>)}{!loading && !visible.length && <EmptyState icon={<ShoppingBasket />} title="Список пуст" text="Добавьте товары из официальных каталогов" />}</div>
       <button className="scan-receipt" onClick={() => notify("Камера чека откроется после подключения хранилища")}><ReceiptText size={22} /><span><b>Загрузить чек</b><small>Сверим цены и обновим запасы</small></span><ChevronRight /></button>
       <div className="total-card"><span><small>Ориентировочно</small><b>{total} ฿</b></span><span><small>Осталось купить</small><b>{visible.filter((i) => !i.bought).reduce((sum, i) => sum + i.price, 0)} ฿</b></span></div>
       <button className="main-action bottom-space" disabled={completing || items.length === 0} onClick={() => void complete()}>{completing ? "Сохраняем…" : "Завершить покупки"}</button>

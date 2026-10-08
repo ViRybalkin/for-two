@@ -7,12 +7,11 @@ test.beforeEach(async ({ page }) => {
   await page.reload();
 });
 
-test("главный экран, изображение и PWA manifest доступны", async ({ page, request }) => {
+test("главный экран без меню не показывает демонстрационное блюдо, PWA manifest доступен", async ({ page, request }) => {
   await expect(page.getByRole("heading", { name: "Доброе утро" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Составить меню" })).toBeVisible();
-  const image = page.getByRole("img", { name: "Пад крапао с жасминовым рисом" });
-  await expect(image).toBeVisible();
-  expect(await image.evaluate((node: HTMLImageElement) => node.complete && node.naturalWidth > 0)).toBe(true);
+  await expect(page.getByRole("button", { name: "Составить меню", exact: true })).toBeVisible();
+  await expect(page.getByText("На сегодня блюд нет")).toBeVisible();
+  await expect(page.getByText("Пад крапао с жасминовым рисом", { exact: true })).toBeHidden();
 
   const manifest = await request.get("/manifest.webmanifest");
   expect(manifest.ok()).toBe(true);
@@ -110,12 +109,10 @@ test("меню: настройки, генерация и открытие ре�
   await expect(page.getByRole("status")).toContainText("Сначала сохраните меню");
 });
 
-test("покупки: отметка товара и безопасный каталог без ключа", async ({ page }) => {
+test("покупки: пустое состояние и безопасный каталог без ключа", async ({ page }) => {
   await page.getByRole("button", { name: "Покупки", exact: true }).click();
-  const yogurt = page.getByText("Греческий йогурт", { exact: true });
-  await expect(yogurt).toBeVisible();
-  await yogurt.click();
-  await expect(yogurt.locator("xpath=ancestor::label")).toHaveClass(/bought/);
+  await expect(page.getByText("Список пуст", { exact: true })).toBeVisible();
+  await expect(page.getByText("Греческий йогурт", { exact: true })).toBeHidden();
 
   await page.getByRole("button", { name: "Найти товар в магазинах" }).click();
   await page.getByPlaceholder("Например, jasmine rice").fill("jasmine rice");

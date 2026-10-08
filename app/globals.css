@@ -36,6 +36,10 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .icon-button { border: 1px solid var(--line); background: white; width: 46px; height: 46px; display: grid; place-items: center; border-radius: 15px; cursor: pointer; }
 .icon-button svg { width: 21px; }
 .location-chip { display: inline-flex; gap: 8px; align-items: center; background: #e7eee9; border-radius: 999px; padding: 8px 12px; font-size: .78rem; color: #53635d; margin-bottom: 16px; }
+.today-plan-state { min-height: 250px; border: 1px solid var(--line); border-radius: 24px; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 28px; text-align: center; color: var(--muted); }
+.today-plan-state b { color: var(--ink); }
+.today-plan-state span:not(.spinner) { max-width: 310px; font-size: .82rem; line-height: 1.45; }
+.today-plan-state .secondary-action { width: auto; min-width: 180px; padding: 0 20px; }
 
 .hero-card { min-height: 410px; position: relative; overflow: hidden; border-radius: 29px; color: white; cursor: pointer; box-shadow: 0 20px 40px rgba(16,46,38,.2); }
 .hero-card img, .recipe-photo img { object-fit: cover; }
