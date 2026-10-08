@@ -32,7 +32,9 @@ test("локальные API валидируют данные и работаю
     data: { name: "Авокадо", quantity: 2, unit: "шт", storage: "Холодильник", expiryDate: null }
   });
   expect(inventory.ok()).toBe(true);
-  expect(await inventory.json()).toMatchObject({ source: "demo" });
+  const inventoryData = await inventory.json();
+  expect(inventoryData).toMatchObject({ source: "demo" });
+  expect((await request.delete(`/api/inventory/${inventoryData.id}`)).status()).toBe(204);
 
   const invalidCatalog = await request.get("/api/catalog/search?q=x");
   expect(invalidCatalog.status()).toBe(400);
@@ -53,7 +55,9 @@ test("локальные API валидируют данные и работаю
   expect(invalidSave.status()).toBe(400);
   const saved = await request.post("/api/meal-plans", { data: { mode: "inventory", request: planRequest, plan: generated.plan } });
   expect(saved.status()).toBe(201);
-  expect(await saved.json()).toMatchObject({ source: "demo" });
+  const savedData = await saved.json();
+  expect(savedData).toMatchObject({ source: "demo" });
+  expect((await request.delete(`/api/meal-plans/${savedData.id}`)).status()).toBe(204);
 
   const invalidSettings = await request.put("/api/settings", { data: { difficulty: "impossible" } });
   expect(invalidSettings.status()).toBe(400);
@@ -72,6 +76,7 @@ test("локальные API валидируют данные и работаю
   const checked = await request.patch(`/api/shopping/${shoppingData.id}`, { data: { bought: true } });
   expect(checked.ok()).toBe(true);
   expect(await checked.json()).toMatchObject({ source: "demo", bought: true });
+  expect((await request.delete(`/api/shopping/${shoppingData.id}`)).status()).toBe(204);
   const completed = await request.put("/api/shopping");
   expect(completed.ok()).toBe(true);
 });

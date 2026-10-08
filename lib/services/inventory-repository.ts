@@ -65,3 +65,11 @@ export async function adjustInventoryItem(id: string, delta: number) {
   if (error) throw error;
   return Number(data);
 }
+
+export async function deleteInventoryItem(id: string) {
+  const client = getSupabaseAdmin();
+  const { error: movementError } = await client.from("inventory_movements").delete().eq("inventory_item_id", id);
+  if (movementError) throw movementError;
+  const { error } = await client.from("inventory_items").delete().eq("id", id);
+  if (error) throw error;
+}

@@ -77,6 +77,11 @@ export async function updateShoppingItem(id: string, bought: boolean) {
   return data.purchased as boolean;
 }
 
+export async function deleteShoppingItem(id: string) {
+  const { error } = await getSupabaseAdmin().from("shopping_list_items").delete().eq("id", id);
+  if (error) throw error;
+}
+
 export async function completeShoppingLists() {
   const client = getSupabaseAdmin();
   const householdId = await getHouseholdId();

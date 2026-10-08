@@ -33,3 +33,8 @@ export async function listMealPlans() {
   if (error) throw error;
   return data || [];
 }
+
+export async function deleteMealPlan(id: string) {
+  const { error } = await getSupabaseAdmin().from("meal_plans").delete().eq("id", id);
+  if (error) throw error;
+}
