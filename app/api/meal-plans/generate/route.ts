@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { generateMealPlan } from "@/lib/services/generate-meal-plan";
 import { mealPlanRequestSchema } from "@/lib/schemas/meal-plan";
+import { createDemoMealPlan } from "@/lib/demo-meal-plan";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -15,15 +16,12 @@ export async function POST(request: Request) {
   }
 
   if (!process.env.OPENAI_API_KEY) {
+    const plan = createDemoMealPlan(parsed.data);
     return NextResponse.json({
       id: crypto.randomUUID(),
       status: "needs_confirmation",
       source: "demo",
-      summary: {
-        days: parsed.data.days,
-        servings: parsed.data.servings,
-        estimatedTotalThb: parsed.data.mode === "stores" ? 1280 : 340
-      }
+      plan
     });
   }
 

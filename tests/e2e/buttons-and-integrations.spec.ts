@@ -109,6 +109,7 @@ test("ранее пустые кнопки дают наблюдаемый ре�
 
 test("UI использует ответ модели и отправляет изменённые параметры", async ({ page }) => {
   let requestBody: Record<string, unknown> | null = null;
+  let savedBody: Record<string, unknown> | null = null;
   await page.route("**/api/meal-plans/generate", async (route) => {
     requestBody = route.request().postDataJSON();
     await route.fulfill({
@@ -118,11 +119,17 @@ test("UI использует ответ модели и отправляет и
         source: "openai",
         status: "needs_confirmation",
         plan: {
-          summary: { estimatedTotalThb: 555, inventoryCoveragePercent: 67, budgetWarning: null },
-          dishes: [{ date: "2026-10-09", mealType: "dinner", title: "Интеграционный суп", cookingMinutes: 25 }]
+          title: "Интеграционное меню",
+          summary: { days: 4, servings: 3, estimatedTotalThb: 555, inventoryCoveragePercent: 67, budgetWarning: null },
+          dishes: [{ date: "2026-10-09", mealType: "dinner", title: "Интеграционный суп", cookingMinutes: 25, difficulty: "easy", servings: 3, estimatedCostThb: 200, ingredients: [{ name: "Рис", quantity: 200, unit: "g", fromInventory: true }], instructions: ["Приготовить"], nutritionPerServing: { kcal: 400, proteinG: 20, fatG: 10, carbsG: 50, fiberG: 5 } }],
+          missingProducts: []
         }
       })
     });
+  });
+  await page.route("**/api/meal-plans", async (route) => {
+    savedBody = route.request().postDataJSON();
+    await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ source: "supabase", id: "plan-id" }) });
   });
 
   await page.getByRole("button", { name: "Меню", exact: true }).click();
@@ -136,6 +143,9 @@ test("UI использует ответ модели и отправляет и
   expect(requestBody).not.toBeNull();
   expect(requestBody).toMatchObject({ days: 4, servings: 3, wish: "без острого" });
   expect((requestBody as unknown as { cuisines: string[] }).cuisines).toContain("японская");
+  await page.getByRole("button", { name: "Сохранить меню" }).click();
+  await expect(page.locator(".toast")).toContainText("Меню сохранено в базе");
+  expect(savedBody).toMatchObject({ mode: "inventory", request: { days: 4, servings: 3 }, plan: { title: "Интеграционное меню" } });
 });
 
 test("добавление продукта передаёт выбранные единицу и место хранения", async ({ page }) => {

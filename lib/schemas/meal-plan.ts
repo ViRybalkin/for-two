@@ -26,7 +26,7 @@ export const generatedMealPlanSchema = z.object({
     budgetWarning: z.string().nullable()
   }),
   dishes: z.array(z.object({
-    date: z.string(),
+    date: z.string().date(),
     mealType: z.enum(["breakfast", "lunch", "dinner", "snack"]),
     title: z.string(),
     cookingMinutes: z.number().int().positive(),

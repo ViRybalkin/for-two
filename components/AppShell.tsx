@@ -33,6 +33,7 @@ import {
   X
 } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
+import type { GeneratedMealPlan, MealPlanRequest } from "@/lib/schemas/meal-plan";
 
 type Tab = "today" | "inventory" | "menu" | "shopping" | "more";
 type Storage = "Холодильник" | "Морозильник" | "Кладовая";
@@ -47,11 +48,6 @@ type InventoryItem = {
 };
 type ShoppingItem = { id: string; name: string; detail: string; price: number; bought: boolean; store: "Tops" | "Makro" };
 type CatalogProduct = { store: "tops" | "makro"; originalName: string; packageText: string | null; priceThb: number | null; url: string; availability: string; checkedAt: string };
-type GeneratedDish = { date: string; mealType: "breakfast" | "lunch" | "dinner" | "snack"; title: string; cookingMinutes: number };
-type GeneratedPlan = {
-  summary: { estimatedTotalThb: number; inventoryCoveragePercent: number; budgetWarning: string | null };
-  dishes: GeneratedDish[];
-};
 
 const initialInventory: InventoryItem[] = [
   { id: "1", name: "Куриное филе", quantity: 620, unit: "г", storage: "Холодильник", expiry: "осталось 2 дня", icon: "🍗" },
@@ -271,7 +267,9 @@ function MenuScreen({ inventory, onRecipe, notify }: { inventory: InventoryItem[
   const [mode, setMode] = useState<"inventory" | "stores">("inventory");
   const [generated, setGenerated] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [plan, setPlan] = useState<GeneratedPlan | null>(null);
+  const [plan, setPlan] = useState<GeneratedMealPlan | null>(null);
+  const [lastRequest, setLastRequest] = useState<MealPlanRequest | null>(null);
+  const [saving, setSaving] = useState(false);
   const [days, setDays] = useState(3);
   const [servings, setServings] = useState(2);
   const [cookingMinutes, setCookingMinutes] = useState(45);
@@ -284,29 +282,46 @@ function MenuScreen({ inventory, onRecipe, notify }: { inventory: InventoryItem[
   const generate = async () => {
     setLoading(true);
     try {
+      const mealTypeMap = { "Завтрак": "breakfast", "Обед": "lunch", "Ужин": "dinner", "Перекус": "snack" } as const;
+      const requestData: MealPlanRequest = {
+        mode,
+        days,
+        servings,
+        budgetThb: mode === "stores" ? budget : undefined,
+        cuisines: cuisines.map((item) => item.toLowerCase()),
+        mealTypes: meals.map((meal) => mealTypeMap[meal as keyof typeof mealTypeMap]),
+        inventory: inventory.map(({ name, quantity, unit, expiry }) => ({ name, quantity, unit, expiry })),
+        wish: wish.trim() || undefined
+      };
       const response = await fetch("/api/meal-plans/generate", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          mode,
-          days,
-          servings,
-          budgetThb: mode === "stores" ? budget : undefined,
-          cuisines: cuisines.map((item) => item.toLowerCase()),
-          mealTypes: meals.map((meal) => ({ "Завтрак": "breakfast", "Обед": "lunch", "Ужин": "dinner", "Перекус": "snack" })[meal]),
-          inventory: inventory.map(({ name, quantity, unit, expiry }) => ({ name, quantity, unit, expiry })),
-          wish: wish.trim() || undefined
-        })
+        body: JSON.stringify(requestData)
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error?.message || "Не удалось составить меню");
       setPlan(data.plan || null);
+      setLastRequest(requestData);
       setGenerated(true);
       notify(data.source === "openai" ? "Меню создано моделью OpenAI" : "Черновик меню готов");
     } catch (error) {
       notify(error instanceof Error ? error.message : "Не удалось составить меню");
     } finally {
       setLoading(false);
+    }
+  };
+  const save = async () => {
+    if (!plan || !lastRequest) return notify("Сначала составьте меню");
+    setSaving(true);
+    try {
+      const response = await fetch("/api/meal-plans", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode, request: lastRequest, plan }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error?.message || "Не удалось сохранить меню");
+      notify("Меню сохранено в базе");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Не удалось сохранить меню");
+    } finally {
+      setSaving(false);
     }
   };
   return (
@@ -325,12 +340,12 @@ function MenuScreen({ inventory, onRecipe, notify }: { inventory: InventoryItem[
         <label className="wish-field"><span>Пожелание</span><textarea value={wish} onChange={(event) => setWish(event.target.value)} placeholder="Например: больше овощей, без острого…" /></label>
         <button className="main-action" disabled={loading || meals.length === 0 || cuisines.length === 0} onClick={generate}>{loading ? <span className="spinner" /> : <Sparkles size={20} />}{loading ? "Составляем меню…" : "Составить меню"}</button>
         <p className="fine-print">Результат можно изменить перед сохранением</p>
-      </> : <GeneratedMenu plan={plan} onRecipe={onRecipe} onReset={() => setGenerated(false)} mode={mode} notify={notify} />}
+      </> : <GeneratedMenu plan={plan} onRecipe={onRecipe} onReset={() => setGenerated(false)} onSave={() => void save()} saving={saving} mode={mode} notify={notify} />}
     </section>
   );
 }
 
-function GeneratedMenu({ plan, onRecipe, onReset, mode, notify }: { plan: GeneratedPlan | null; onRecipe: () => void; onReset: () => void; mode: string; notify: (t: string) => void }) {
+function GeneratedMenu({ plan, onRecipe, onReset, onSave, saving, mode, notify }: { plan: GeneratedMealPlan | null; onRecipe: () => void; onReset: () => void; onSave: () => void; saving: boolean; mode: string; notify: (t: string) => void }) {
   const fallbackDays = [
     { date: "Сегодня · 8 окт.", meals: [["Завтрак", "Йогурт с манго и гранолой", "12 мин"], ["Обед", "Тёплый салат с курицей", "25 мин"], ["Ужин", "Пад крапао с рисом", "30 мин"]] },
     { date: "Завтра · 9 окт.", meals: [["Завтрак", "Омлет с томатами", "15 мин"], ["Обед", "Кокосовый суп с креветками", "35 мин"], ["Ужин", "Запечённая рыба с овощами", "40 мин"]] },
@@ -347,7 +362,7 @@ function GeneratedMenu({ plan, onRecipe, onReset, mode, notify }: { plan: Genera
   return <>
     <div className="result-banner"><div><Check size={19} /><span><b>Меню готово</b><small>{summary}</small></span></div><button onClick={onReset}>Изменить</button></div>
     <div className="days-list">{days.map((day) => <section key={day.date} className="day-card"><h3>{day.date}</h3>{day.meals.map(([type, name, time], index) => <button key={`${day.date}-${name}`} className="meal-row" onClick={name.toLowerCase().includes("пад крапао") ? onRecipe : () => notify(`Рецепт «${name}» выбран`)}><span className={`meal-dot dot-${index}`} /><span className="meal-content"><small>{type}</small><b>{name}</b><em><Clock3 size={13} />{time}</em></span><ChevronRight size={18} /></button>)}</section>)}</div>
-    <div className="sticky-actions"><button className="secondary-action" onClick={onReset}>Заново</button><button className="main-action" onClick={() => notify("Меню сохранено")}>Сохранить меню</button></div>
+    <div className="sticky-actions"><button className="secondary-action" onClick={onReset} disabled={saving}>Заново</button><button className="main-action" onClick={onSave} disabled={saving || !plan}>{saving ? "Сохраняем…" : "Сохранить меню"}</button></div>
   </>;
 }
 

@@ -42,18 +42,18 @@ test("локальные API валидируют данные и работаю
 
   const invalidPlan = await request.post("/api/meal-plans/generate", { data: { mode: "inventory" } });
   expect(invalidPlan.status()).toBe(400);
-  const plan = await request.post("/api/meal-plans/generate", {
-    data: {
-      mode: "inventory",
-      days: 3,
-      servings: 2,
-      cuisines: ["тайская"],
-      mealTypes: ["breakfast", "dinner"],
-      inventory: []
-    }
-  });
+  const planRequest = { mode: "inventory", days: 3, servings: 2, cuisines: ["тайская"], mealTypes: ["breakfast", "dinner"], inventory: [] };
+  const plan = await request.post("/api/meal-plans/generate", { data: planRequest });
   expect(plan.ok()).toBe(true);
-  expect(await plan.json()).toMatchObject({ source: "demo", status: "needs_confirmation" });
+  const generated = await plan.json();
+  expect(generated).toMatchObject({ source: "demo", status: "needs_confirmation" });
+  expect(generated.plan.dishes.length).toBeGreaterThan(0);
+
+  const invalidSave = await request.post("/api/meal-plans", { data: { mode: "inventory" } });
+  expect(invalidSave.status()).toBe(400);
+  const saved = await request.post("/api/meal-plans", { data: { mode: "inventory", request: planRequest, plan: generated.plan } });
+  expect(saved.status()).toBe(201);
+  expect(await saved.json()).toMatchObject({ source: "demo" });
 });
 
 test("запасы: добавление, изменение количества, поиск и сохранение после перезагрузки", async ({ page }) => {
