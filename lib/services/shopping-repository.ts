@@ -12,6 +12,13 @@ export const shoppingItemInputSchema = z.object({
 
 export const shoppingItemPatchSchema = z.object({ bought: z.boolean() });
 
+function localizeDetail(detail: string | null) {
+  return (detail || "фасовка не указана")
+    .replace(/\s+piece$/, " шт")
+    .replace(/\s+ml$/, " мл")
+    .replace(/\s+g$/, " г");
+}
+
 async function getHouseholdId() {
   const { data, error } = await getSupabaseAdmin().from("households").select("id").order("created_at").limit(1).single();
   if (error) throw error;
@@ -53,7 +60,7 @@ export async function listShoppingItems() {
     return {
       id: item.id,
       name: product?.display_name_ru || "Товар",
-      detail: item.department || "фасовка не указана",
+      detail: localizeDetail(item.department),
       price: Number(item.estimated_price_thb || 0),
       bought: item.purchased,
       store: storeByList.get(item.shopping_list_id) || "Tops"
