@@ -54,6 +54,15 @@ test("локальные API валидируют данные и работаю
   const saved = await request.post("/api/meal-plans", { data: { mode: "inventory", request: planRequest, plan: generated.plan } });
   expect(saved.status()).toBe(201);
   expect(await saved.json()).toMatchObject({ source: "demo" });
+
+  const invalidSettings = await request.put("/api/settings", { data: { difficulty: "impossible" } });
+  expect(invalidSettings.status()).toBe(400);
+  const settings = await request.get("/api/settings");
+  expect(settings.ok()).toBe(true);
+  const settingsData = await settings.json();
+  const updatedSettings = await request.put("/api/settings", { data: { ...settingsData.settings, batchCookingEnabled: true } });
+  expect(updatedSettings.ok()).toBe(true);
+  expect(await updatedSettings.json()).toMatchObject({ source: "demo", settings: { batchCookingEnabled: true } });
 });
 
 test("запасы: добавление, изменение количества, поиск и сохранение после перезагрузки", async ({ page }) => {

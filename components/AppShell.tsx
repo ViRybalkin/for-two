@@ -466,12 +466,43 @@ function CatalogSearchSheet({ onClose, onAdd }: { onClose: () => void; onAdd: (p
 
 function SettingsSheet({ onClose, notify }: { onClose: () => void; notify: (text: string) => void }) {
   const [batch, setBatch] = useState(false); const [repeats, setRepeats] = useState(true);
+  const [maxCookingMinutes, setMaxCookingMinutes] = useState(45);
+  const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard">("medium");
   const [equipment, setEquipment] = useState(["Плита", "Аэрогриль", "Рисоварка", "Микроволновка"]);
+  const [wish, setWish] = useState("Больше овощей. Ужин не слишком острый.");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const toggleEquipment = (item: string) => setEquipment((old) => old.includes(item) ? old.filter((value) => value !== item) : [...old, item]);
+  useEffect(() => {
+    void fetch("/api/settings").then(async (response) => {
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error?.message || "Не удалось загрузить настройки");
+      setMaxCookingMinutes(data.settings.maxCookingMinutes);
+      setDifficulty(data.settings.difficulty);
+      setRepeats(data.settings.allowRepeats);
+      setBatch(data.settings.batchCookingEnabled);
+      setEquipment(data.settings.equipment);
+      setWish(data.settings.wish);
+    }).catch((error) => notify(error instanceof Error ? error.message : "Не удалось загрузить настройки")).finally(() => setLoading(false));
+  }, []);
+  const save = async () => {
+    setSaving(true);
+    try {
+      const response = await fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ maxCookingMinutes, difficulty, allowRepeats: repeats, batchCookingEnabled: batch, equipment, wish }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error?.message || "Не удалось сохранить настройки");
+      notify("Настройки сохранены в базе");
+      onClose();
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Не удалось сохранить настройки");
+    } finally {
+      setSaving(false);
+    }
+  };
   return <div className="overlay" role="dialog" aria-modal="true"><div className="sheet tall"><div className="sheet-handle" /><div className="sheet-title"><div><p className="eyebrow">ПО УМОЛЧАНИЮ</p><h2>Настройки меню</h2></div><button className="icon-button" onClick={onClose} aria-label="Закрыть"><X /></button></div>
-    <div className="settings-group"><label><span><b>Время приготовления</b><small>Для обычного дня</small></span><select defaultValue="45"><option value="30">до 30 минут</option><option value="45">до 45 минут</option><option value="60">до 60 минут</option></select></label><label><span><b>Сложность</b><small>Максимальный уровень</small></span><select defaultValue="medium"><option value="easy">Легко</option><option value="medium">Средне</option><option value="hard">Сложно</option></select></label><label><span><b>Разрешить повторы</b><small>Повторять удачные блюда</small></span><Toggle label="Разрешить повторы" checked={repeats} setChecked={setRepeats} /></label><label><span><b>Готовить на несколько дней</b><small>Учитывать остатки порций</small></span><Toggle label="Готовить на несколько дней" checked={batch} setChecked={setBatch} /></label></div>
+    {loading ? <div className="catalog-message">Загружаем настройки…</div> : <><div className="settings-group"><label><span><b>Время приготовления</b><small>Для обычного дня</small></span><select value={maxCookingMinutes} onChange={(event) => setMaxCookingMinutes(Number(event.target.value))}><option value="30">до 30 минут</option><option value="45">до 45 минут</option><option value="60">до 60 минут</option></select></label><label><span><b>Сложность</b><small>Максимальный уровень</small></span><select value={difficulty} onChange={(event) => setDifficulty(event.target.value as typeof difficulty)}><option value="easy">Легко</option><option value="medium">Средне</option><option value="hard">Сложно</option></select></label><label><span><b>Разрешить повторы</b><small>Повторять удачные блюда</small></span><Toggle label="Разрешить повторы" checked={repeats} setChecked={setRepeats} /></label><label><span><b>Готовить на несколько дней</b><small>Учитывать остатки порций</small></span><Toggle label="Готовить на несколько дней" checked={batch} setChecked={setBatch} /></label></div>
     <OptionSection title="Доступная техника"><div className="choice-wrap">{["Плита", "Аэрогриль", "Рисоварка", "Микроволновка", "Блендер"].map((item) => <button key={item} className={equipment.includes(item) ? "choice active" : "choice"} onClick={() => toggleEquipment(item)}>{equipment.includes(item) && <Check size={15} />}{item}</button>)}</div></OptionSection>
-    <label className="wish-field"><span>Постоянные пожелания</span><textarea defaultValue="Больше овощей. Ужин не слишком острый." /></label><button className="main-action" onClick={() => { notify("Настройки сохранены"); onClose(); }}>Сохранить настройки</button>
+    <label className="wish-field"><span>Постоянные пожелания</span><textarea value={wish} onChange={(event) => setWish(event.target.value)} /></label><button className="main-action" disabled={saving} onClick={() => void save()}>{saving ? "Сохраняем…" : "Сохранить настройки"}</button></>}
   </div></div>;
 }
 
