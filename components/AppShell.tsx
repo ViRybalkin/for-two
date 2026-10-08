@@ -1,6 +1,11 @@
 "use client";
 
 import Image from "next/image";
+import { A11y, Navigation, Pagination } from "swiper/modules";
+import { Swiper, SwiperSlide } from "swiper/react";
+import "swiper/css";
+import "swiper/css/navigation";
+import "swiper/css/pagination";
 import {
   Archive,
   CalendarDays,
@@ -253,30 +258,43 @@ function TodayScreen({ savedPlan, onMenu, onInventory, onRecipe, onAdd, onSettin
   const orderedDishes = firstPending > 0 ? [...todayDishes.slice(firstPending), ...todayDishes.slice(0, firstPending)] : todayDishes;
   const slides = orderedDishes.length ? orderedDishes : [fallbackDish];
   const dish = slides[slideIndex % slides.length];
-  const dishCompleted = completed.includes(getMealDishKey(dish.date, dish.mealType));
   const mealNames = { breakfast: "Завтрак", lunch: "Обед", dinner: "Ужин", snack: "Перекус" } as const;
   const currentDate = new Intl.DateTimeFormat("ru-RU", { timeZone: "Asia/Bangkok", weekday: "long", day: "numeric", month: "long" }).format(new Date());
-  const hasSpecificPhoto = dish.title.toLowerCase().includes("пад крапао");
   useEffect(() => setSlideIndex(0), [savedPlan?.id, today, completed.join("|")]);
-  const moveSlide = (direction: number) => setSlideIndex((current) => (current + direction + slides.length) % slides.length);
   return (
     <section className="screen today-screen">
       <BrandHeader title="Доброе утро" subtitle={currentDate} action={<button className="avatar" aria-label="Общие настройки" onClick={onSettings}>В + Д</button>} />
       <div className="location-chip"><span>Пхукет</span><span>•</span><span>сегодня {todayDishes.length || 1} приёма пищи</span></div>
 
-      <article className="hero-card">
-        {hasSpecificPhoto ? <Image src="/pad-krapow.png" alt={dish.title} fill priority sizes="(max-width: 600px) 100vw, 560px" /> : <div className="meal-placeholder"><CookingPot size={74} /><span>Рецепт на сегодня</span></div>}
-        <div className="hero-shade" />
-        <button className="hero-open" onClick={() => onRecipe(dish)} aria-label={`Открыть рецепт ${dish.title}`} />
-        <div className="hero-top"><span className="meal-pill">{dishCompleted ? "✓ Приготовлено" : `${mealNames[dish.mealType]} · сегодня`}</span><button className="round-glass" aria-label="Добавить в любимые" onClick={() => notify("Рецепт добавлен в любимые")}><Heart size={19} /></button></div>
-        <div className="hero-copy">
-          <p className="eyebrow light">СЕГОДНЯ ГОТОВИМ</p>
-          <h2>{dish.title}</h2>
-          <div className="hero-meta"><span><Clock3 size={15} /> {dish.cookingMinutes} мин</span><span>{dish.servings} порции</span><span>≈ {Math.round(dish.estimatedCostThb)} ฿</span></div>
-        </div>
-        {slides.length > 1 && <div className="meal-slider-controls"><button onClick={() => moveSlide(-1)} aria-label="Предыдущее блюдо"><ChevronLeft /></button><span>{slideIndex + 1} / {slides.length}</span><button onClick={() => moveSlide(1)} aria-label="Следующее блюдо"><ChevronRight /></button></div>}
-      </article>
-      {slides.length > 1 && <div className="meal-slider-dots" aria-label="Блюда на сегодня">{slides.map((item, index) => <button key={getMealDishKey(item.date, item.mealType)} className={index === slideIndex ? "active" : ""} onClick={() => setSlideIndex(index)} aria-label={`Показать: ${item.title}`} />)}</div>}
+      <Swiper
+        key={`${savedPlan?.id || "fallback"}-${completed.join("|")}`}
+        className="meal-swiper"
+        modules={[Navigation, Pagination, A11y]}
+        slidesPerView={1}
+        spaceBetween={14}
+        navigation={slides.length > 1}
+        pagination={slides.length > 1 ? { clickable: true } : false}
+        onSlideChange={(swiper) => setSlideIndex(swiper.activeIndex)}
+        aria-label="Блюда на сегодня"
+      >
+        {slides.map((slideDish) => {
+          const completedSlide = completed.includes(getMealDishKey(slideDish.date, slideDish.mealType));
+          const specificPhoto = slideDish.title.toLowerCase().includes("пад крапао");
+          return <SwiperSlide key={getMealDishKey(slideDish.date, slideDish.mealType)}>
+            <article className="hero-card">
+              {specificPhoto ? <Image src="/pad-krapow.png" alt={slideDish.title} fill priority sizes="(max-width: 600px) 100vw, 560px" /> : <div className="meal-placeholder"><CookingPot size={74} /><span>Рецепт на сегодня</span></div>}
+              <div className="hero-shade" />
+              <button className="hero-open" onClick={() => onRecipe(slideDish)} aria-label={`Открыть рецепт ${slideDish.title}`} />
+              <div className="hero-top"><span className="meal-pill">{completedSlide ? "✓ Приготовлено" : `${mealNames[slideDish.mealType]} · сегодня`}</span><button className="round-glass" aria-label="Добавить в любимые" onClick={() => notify("Рецепт добавлен в любимые")}><Heart size={19} /></button></div>
+              <div className="hero-copy">
+                <p className="eyebrow light">СЕГОДНЯ ГОТОВИМ</p>
+                <h2>{slideDish.title}</h2>
+                <div className="hero-meta"><span><Clock3 size={15} /> {slideDish.cookingMinutes} мин</span><span>{slideDish.servings} порции</span><span>≈ {Math.round(slideDish.estimatedCostThb)} ฿</span></div>
+              </div>
+            </article>
+          </SwiperSlide>;
+        })}
+      </Swiper>
 
       <div className="nutrition-row" aria-label="Пищевая ценность порции">
         <Metric value={`${Math.round(dish.nutritionPerServing.kcal)}`} label="ккал" />

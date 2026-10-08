@@ -217,9 +217,9 @@ test("слайдер начинает с первого неприготовле
 
   await page.reload();
   await expect(page.getByRole("heading", { name: "Йогурт с фруктами" })).toBeVisible();
-  await page.getByRole("button", { name: "Следующее блюдо" }).click();
+  await page.locator(".meal-swiper .swiper-button-next").click();
   await expect(page.getByRole("heading", { name: "Обеденный боул" })).toBeVisible();
-  await page.getByRole("button", { name: "Показать: Йогурт с фруктами" }).click();
+  await page.locator(".meal-swiper .swiper-pagination-bullet").first().click();
   await page.getByRole("button", { name: "Открыть рецепт Йогурт с фруктами" }).click();
   await page.getByRole("button", { name: "Приготовлено" }).click();
   await expect(page.getByRole("status")).toContainText("следующим показано ближайшее");

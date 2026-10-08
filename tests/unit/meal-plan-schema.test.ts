@@ -55,4 +55,10 @@ describe("generatedMealPlanSchema", () => {
     invalid.dishes[0].instructions = [];
     expect(generatedMealPlanSchema.safeParse(invalid).success).toBe(false);
   });
+
+  it("limits a recipe to five preparation steps", () => {
+    const invalid = structuredClone(validPlan);
+    invalid.dishes[0].instructions = ["1", "2", "3", "4", "5", "6"];
+    expect(generatedMealPlanSchema.safeParse(invalid).success).toBe(false);
+  });
 });

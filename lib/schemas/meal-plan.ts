@@ -39,7 +39,7 @@ export const generatedMealPlanSchema = z.object({
       unit: z.enum(["g", "ml", "piece"]),
       fromInventory: z.boolean()
     })),
-    instructions: z.array(z.string()).min(1),
+    instructions: z.array(z.string()).min(1).max(5),
     nutritionPerServing: z.object({
       kcal: z.number().nonnegative(),
       proteinG: z.number().nonnegative(),
