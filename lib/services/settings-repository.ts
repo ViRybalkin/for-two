@@ -30,17 +30,17 @@ export async function loadSettings() {
   const client = getSupabaseAdmin();
   const householdId = await getHouseholdId();
   const [{ data: settings, error: settingsError }, { data: preferences, error: preferencesError }] = await Promise.all([
-    client.from("settings").select("max_cooking_minutes,difficulty,allow_repeats,batch_cooking_enabled,equipment").eq("household_id", householdId).single(),
+    client.from("settings").select("max_cooking_minutes,difficulty,allow_repeats,batch_cooking_enabled,equipment").eq("household_id", householdId).maybeSingle(),
     client.from("preferences").select("value").eq("household_id", householdId).eq("type", "free_text").eq("active", true).limit(1)
   ]);
   if (settingsError) throw settingsError;
   if (preferencesError) throw preferencesError;
   return settingsSchema.parse({
-    maxCookingMinutes: settings.max_cooking_minutes,
-    difficulty: settings.difficulty,
-    allowRepeats: settings.allow_repeats,
-    batchCookingEnabled: settings.batch_cooking_enabled,
-    equipment: Array.isArray(settings.equipment) ? settings.equipment : defaultSettings.equipment,
+    maxCookingMinutes: settings?.max_cooking_minutes ?? defaultSettings.maxCookingMinutes,
+    difficulty: settings?.difficulty ?? defaultSettings.difficulty,
+    allowRepeats: settings?.allow_repeats ?? defaultSettings.allowRepeats,
+    batchCookingEnabled: settings?.batch_cooking_enabled ?? defaultSettings.batchCookingEnabled,
+    equipment: Array.isArray(settings?.equipment) ? settings.equipment : defaultSettings.equipment,
     wish: preferences?.[0]?.value || ""
   });
 }
@@ -48,14 +48,15 @@ export async function loadSettings() {
 export async function saveSettings(input: z.infer<typeof settingsSchema>) {
   const client = getSupabaseAdmin();
   const householdId = await getHouseholdId();
-  const { error: settingsError } = await client.from("settings").update({
+  const { error: settingsError } = await client.from("settings").upsert({
+    household_id: householdId,
     max_cooking_minutes: input.maxCookingMinutes,
     difficulty: input.difficulty,
     allow_repeats: input.allowRepeats,
     batch_cooking_enabled: input.batchCookingEnabled,
     equipment: input.equipment,
     updated_at: new Date().toISOString()
-  }).eq("household_id", householdId);
+  }, { onConflict: "household_id" });
   if (settingsError) throw settingsError;
 
   const { error: deactivateError } = await client.from("preferences").update({ active: false }).eq("household_id", householdId).eq("type", "free_text").eq("active", true);
