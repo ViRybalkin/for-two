@@ -131,6 +131,15 @@ test("настройки сохраняют интерактивные сост�
   await expect(page.getByRole("status")).toContainText("Настройки сохранены");
 });
 
+test("экран ещё не показывает демонстрационные показатели и историю", async ({ page }) => {
+  await page.getByRole("button", { name: "Ещё", exact: true }).click();
+  await expect(page.getByText("0", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("История пока пуста", { exact: true })).toBeVisible();
+  await expect(page.getByText("Виталий и Даша", { exact: true })).toBeHidden();
+  await expect(page.getByText("4 820 ฿", { exact: true })).toBeHidden();
+  await expect(page.getByText("Приготовлен том-ям", { exact: true })).toBeHidden();
+});
+
 test("нет горизонтального переполнения на поддерживаемых ширинах", async ({ page }) => {
   for (const width of [320, 390, 430]) {
     await page.setViewportSize({ width, height: 844 });

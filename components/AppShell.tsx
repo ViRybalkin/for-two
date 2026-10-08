@@ -18,7 +18,6 @@ import {
   Clock3,
   CookingPot,
   Heart,
-  History,
   Home,
   Minus,
   MoreHorizontal,
@@ -162,7 +161,7 @@ export function AppShell() {
         {tab === "inventory" && <InventoryScreen items={inventory} loading={inventoryLoading} setItems={setInventory} onAdd={() => setSheet("add")} notify={notify} />}
         {tab === "menu" && <MenuScreen inventory={inventory} setShopping={setShopping} savedPlan={savedPlan} onPlanSaved={setSavedPlan} onRecipe={openRecipe} notify={notify} />}
         {tab === "shopping" && <ShoppingScreen items={shopping} loading={shoppingLoading} setItems={setShopping} notify={notify} onSearch={() => setSheet("catalog")} />}
-        {tab === "more" && <MoreScreen onSettings={() => setSheet("settings")} notify={notify} />}
+        {tab === "more" && <MoreScreen savedPlan={savedPlan} shopping={shopping} onSettings={() => setSheet("settings")} />}
 
         <nav className="bottom-nav" aria-label="Основная навигация">
           {nav.map((item) => {
@@ -509,22 +508,21 @@ function ShoppingScreen({ items, loading, setItems, notify, onSearch }: { items:
   );
 }
 
-function MoreScreen({ onSettings, notify }: { onSettings: () => void; notify: (text: string) => void }) {
+function MoreScreen({ savedPlan, shopping, onSettings }: { savedPlan: SavedMealPlan | null; shopping: ShoppingItem[]; onSettings: () => void }) {
+  const completedMeals = savedPlan?.completed.length || 0;
+  const remainingShopping = shopping.filter((item) => !item.bought);
+  const remainingTotal = remainingShopping.reduce((sum, item) => sum + item.price, 0);
   return <section className="screen"><BrandHeader title="Ещё" subtitle="Рецепты, расходы и настройки" />
-    <div className="profile-card"><div className="pair-avatars"><span>В</span><span>Д</span></div><div><b>Виталий и Даша</b><small>Общее пространство · Пхукет</small></div><ChevronRight /></div>
-    <div className="stats-grid"><div><span className="stat-icon lime"><CookingPot /></span><b>18</b><small>блюд приготовлено</small></div><div><span className="stat-icon peach"><CircleDollarSign /></span><b>4 820 ฿</b><small>расходы в октябре</small></div></div>
+    <div className="profile-card"><div className="pair-avatars"><span>1</span><span>2</span></div><div><b>Общее пространство</b><small>Меню и покупки для двоих</small></div></div>
+    <div className="stats-grid"><div><span className="stat-icon lime"><CookingPot /></span><b>{completedMeals}</b><small>блюд отмечено приготовленными</small></div><div><span className="stat-icon peach"><CircleDollarSign /></span><b>{remainingTotal} ฿</b><small>{remainingShopping.length} товаров осталось купить</small></div></div>
     <div className="menu-list">
-      <MoreRow icon={<Star />} title="Сохранённые рецепты" detail="12 рецептов" onClick={() => notify("Коллекция рецептов готова к подключению")} />
-      <MoreRow icon={<History />} title="История" detail="Меню, покупки и движения" onClick={() => notify("История синхронизируется после подключения базы")} />
-      <MoreRow icon={<WalletCards />} title="Расходы" detail="По неделям и месяцам" onClick={() => notify("В октябре потрачено 4 820 ฿")} />
       <MoreRow icon={<Settings />} title="Настройки" detail="Кухни, техника и пожелания" onClick={onSettings} />
     </div>
-    <div className="history-card"><div className="section-heading compact"><div><p className="eyebrow">НЕДАВНО</p><h2>История</h2></div></div><Timeline icon="🍜" title="Приготовлен том-ям" meta="Сегодня, 13:42 · списано 6 продуктов" /><Timeline icon="🛒" title="Покупки в Tops" meta="Вчера, 18:20 · 684 ฿" /><Timeline icon="✨" title="Создано меню" meta="6 октября · на 3 дня" /></div>
+    <div className="history-card"><div className="section-heading compact"><div><p className="eyebrow">ДАННЫЕ</p><h2>История</h2></div></div><EmptyState icon={<Archive />} title="История пока пуста" text="Здесь появятся реальные приготовления, покупки и изменения запасов" /></div>
   </section>;
 }
 
 function MoreRow({ icon, title, detail, onClick }: { icon: React.ReactNode; title: string; detail: string; onClick: () => void }) { return <button className="more-row" onClick={onClick}><span>{icon}</span><div><b>{title}</b><small>{detail}</small></div><ChevronRight /></button>; }
-function Timeline({ icon, title, meta }: { icon: string; title: string; meta: string }) { return <div className="timeline-row"><span>{icon}</span><div><b>{title}</b><small>{meta}</small></div></div>; }
 function StepperRow({ label, value, icon, onDecrease, onIncrease, decreaseDisabled, increaseDisabled }: { label: string; value: string; icon: React.ReactNode; onDecrease: () => void; onIncrease: () => void; decreaseDisabled: boolean; increaseDisabled: boolean }) {
   const name = label.toLowerCase();
   return <div className="form-row"><span className="form-icon">{icon}</span><span className="form-copy"><b>{label}</b><small>Кнопками − и +</small></span><span className="row-stepper" role="group" aria-label={label}><button type="button" onClick={onDecrease} disabled={decreaseDisabled} aria-label={`Уменьшить ${name}`}><Minus size={16} /></button><output aria-live="polite">{value}</output><button type="button" onClick={onIncrease} disabled={increaseDisabled} aria-label={`Увеличить ${name}`}><Plus size={16} /></button></span></div>;
