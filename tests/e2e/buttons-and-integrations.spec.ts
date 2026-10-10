@@ -276,6 +276,9 @@ test("слайдер начинает с первого неприготовле
 });
 
 test("сохранение нового меню из магазинов обновляет покупки", async ({ page }) => {
+  await page.route("**/api/shopping", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", items: [{ id: "old-milk", name: "Старое молоко", detail: "1 л", price: 80, bought: false, store: "Tops" }] }) });
+  });
   await page.route("**/api/meal-plans", async (route) => {
     if (route.request().method() === "GET") {
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", items: [] }) });
@@ -291,6 +294,7 @@ test("сохранение нового меню из магазинов обн�
       missingProducts: [{ name: "Рис", quantity: 200, unit: "g" }]
     } }) });
   });
+  await page.reload();
 
   await page.getByRole("button", { name: "Меню", exact: true }).click();
   await page.getByRole("button", { name: "Из магазинов" }).click();
@@ -299,6 +303,7 @@ test("сохранение нового меню из магазинов обн�
   await expect(page.getByRole("status")).toContainText("1 покупок добавлено");
   await page.getByRole("button", { name: "Покупки", exact: true }).click();
   await expect(page.getByText("Рис", { exact: true })).toBeVisible();
+  await expect(page.getByText("Старое молоко", { exact: true })).toHaveCount(0);
 });
 
 test("пустой список восстанавливается из сохранённого меню магазина", async ({ page }) => {

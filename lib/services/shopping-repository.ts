@@ -129,10 +129,20 @@ export async function addShoppingItem(input: z.infer<typeof shoppingItemInputSch
 }
 
 export async function createShoppingItemsForMealPlan(mealPlanId: string, plan: GeneratedMealPlan) {
+  const client = getSupabaseAdmin();
+  const householdId = await getHouseholdId();
+  const { error: supersedeError } = await client
+    .from("shopping_lists")
+    .update({ status: "superseded" })
+    .eq("household_id", householdId)
+    .eq("status", "active")
+    .not("meal_plan_id", "is", null)
+    .neq("meal_plan_id", mealPlanId);
+  if (supersedeError) throw supersedeError;
+
   if (!plan.missingProducts.length) return listShoppingItems();
 
-  const client = getSupabaseAdmin();
-  const [householdId, storeRow] = await Promise.all([getHouseholdId(), getStore("Tops")]);
+  const storeRow = await getStore("Tops");
   const { data: existingList, error: findError } = await client
     .from("shopping_lists")
     .select("id")
