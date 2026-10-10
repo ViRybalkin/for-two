@@ -10,7 +10,7 @@ export const shoppingItemInputSchema = z.object({
   name: z.string().trim().min(1).max(160),
   detail: z.string().trim().min(1).max(200),
   price: z.number().nonnegative().max(1_000_000),
-  store: z.enum(["Tops", "Makro"]),
+  store: z.literal("Makro"),
   url: optionalHttpUrl,
   imageUrl: optionalHttpUrl
 });
@@ -26,7 +26,15 @@ function localizeDetail(detail: string | null) {
 
 const shoppingMetadataPrefix = "na-dvoih:v1:";
 
-type ShoppingMetadata = { detail: string; url: string | null; imageUrl: string | null };
+type BaseUnit = "g" | "ml" | "piece";
+type ShoppingMetadata = {
+  detail: string;
+  url: string | null;
+  imageUrl: string | null;
+  requiredDetail?: string;
+  purchasedQuantity?: number;
+  purchasedUnit?: BaseUnit;
+};
 
 function safeHttpUrl(value: unknown) {
   return typeof value === "string" && /^https?:\/\//i.test(value) ? value : null;
@@ -40,17 +48,53 @@ export function decodeShoppingMetadata(value: string | null): ShoppingMetadata {
   if (!value?.startsWith(shoppingMetadataPrefix)) return { detail: value || "фасовка не указана", url: null, imageUrl: null };
   try {
     const parsed = JSON.parse(value.slice(shoppingMetadataPrefix.length)) as Partial<ShoppingMetadata>;
-    return {
+    const metadata: ShoppingMetadata = {
       detail: typeof parsed.detail === "string" && parsed.detail ? parsed.detail : "фасовка не указана",
       url: safeHttpUrl(parsed.url),
       imageUrl: safeHttpUrl(parsed.imageUrl)
     };
+    if (typeof parsed.requiredDetail === "string" && parsed.requiredDetail) metadata.requiredDetail = parsed.requiredDetail;
+    if (typeof parsed.purchasedQuantity === "number" && parsed.purchasedQuantity > 0) metadata.purchasedQuantity = parsed.purchasedQuantity;
+    if (parsed.purchasedUnit === "g" || parsed.purchasedUnit === "ml" || parsed.purchasedUnit === "piece") metadata.purchasedUnit = parsed.purchasedUnit;
+    return metadata;
   } catch {
     return { detail: "фасовка не указана", url: null, imageUrl: null };
   }
 }
 
 const unitAliases = { g: "g", "г": "g", kg: "g", "кг": "g", ml: "ml", "мл": "ml", l: "ml", "л": "ml", piece: "piece", "шт": "piece" } as const;
+
+function convertToBaseUnit(quantity: number, unit: keyof typeof unitAliases) {
+  if (unit === "кг" || unit === "kg" || unit === "л" || unit === "l") return quantity * 1000;
+  return quantity;
+}
+
+export function parseCatalogPackageQuantity(packageText: string | null) {
+  const normalized = (packageText || "").toLowerCase().replace(/,/g, ".");
+  const multiplied = normalized.match(/(\d+(?:\.\d+)?)\s*[×xх*]\s*(\d+(?:\.\d+)?)\s*(кг|kg|г|g|мл|ml|л|l|шт|piece)(?=\s|[.,;/)]|$)/);
+  const simple = normalized.match(/(\d+(?:\.\d+)?)\s*(кг|kg|г|g|мл|ml|л|l|шт|piece)(?=\s|[.,;/)]|$)/);
+  const match = multiplied || simple;
+  if (!match) return null;
+  const rawUnit = (multiplied ? match[3] : match[2]) as keyof typeof unitAliases;
+  const quantity = convertToBaseUnit(Number(match[1]) * (multiplied ? Number(match[2]) : 1), rawUnit);
+  return { quantity, unit: unitAliases[rawUnit] as BaseUnit };
+}
+
+export function buildCatalogPurchase(requiredQuantity: number, requiredUnit: BaseUnit, packageText: string | null) {
+  const parsedPackage = parseCatalogPackageQuantity(packageText);
+  const requiredDetail = `${requiredQuantity} ${requiredUnit}`;
+  if (!parsedPackage || parsedPackage.unit !== requiredUnit) {
+    return { detail: "фасовка не найдена", requiredDetail, packages: 1, purchasedQuantity: requiredQuantity, purchasedUnit: requiredUnit };
+  }
+  const packages = Math.max(1, Math.ceil(requiredQuantity / parsedPackage.quantity));
+  return {
+    detail: `${packages} уп. · ${packageText!.trim()}`,
+    requiredDetail,
+    packages,
+    purchasedQuantity: parsedPackage.quantity * packages,
+    purchasedUnit: parsedPackage.unit
+  };
+}
 
 export function parsePurchasedQuantity(detail: string | null, fallbackPackages: number, defaultUnit: "g" | "ml" | "piece") {
   const normalized = (detail || "").toLowerCase().replace(",", ".");
@@ -91,7 +135,8 @@ async function getOrCreateActiveList(store: "Tops" | "Makro") {
 export async function listShoppingItems() {
   const client = getSupabaseAdmin();
   const householdId = await getHouseholdId();
-  const { data: lists, error: listError } = await client.from("shopping_lists").select("id,store_id,stores(code,name)").eq("household_id", householdId).eq("status", "active");
+  const makro = await getStore("Makro");
+  const { data: lists, error: listError } = await client.from("shopping_lists").select("id,store_id,stores(code,name)").eq("household_id", householdId).eq("store_id", makro.id).eq("status", "active");
   if (listError) throw listError;
   if (!lists?.length) return [];
 
@@ -107,10 +152,12 @@ export async function listShoppingItems() {
     return {
       id: item.id,
       name: product?.display_name_ru || "Товар",
-      detail: localizeDetail(metadata.detail),
+      detail: metadata.requiredDetail
+        ? `${localizeDetail(metadata.detail)} · нужно ${localizeDetail(metadata.requiredDetail)}`
+        : localizeDetail(metadata.detail),
       price: Number(item.estimated_price_thb || 0),
       bought: item.purchased,
-      store: storeByList.get(item.shopping_list_id) || "Tops",
+      store: storeByList.get(item.shopping_list_id) || "Makro",
       url: metadata.url,
       imageUrl: metadata.imageUrl
     };
@@ -132,6 +179,7 @@ export async function addShoppingItem(input: z.infer<typeof shoppingItemInputSch
 export async function createShoppingItemsForMealPlan(mealPlanId: string, plan: GeneratedMealPlan) {
   const client = getSupabaseAdmin();
   const householdId = await getHouseholdId();
+  const storeRow = await getStore("Makro");
   const { error: supersedeError } = await client
     .from("shopping_lists")
     .update({ status: "superseded" })
@@ -141,9 +189,17 @@ export async function createShoppingItemsForMealPlan(mealPlanId: string, plan: G
     .neq("meal_plan_id", mealPlanId);
   if (supersedeError) throw supersedeError;
 
+  const { error: oldStoreError } = await client
+    .from("shopping_lists")
+    .update({ status: "superseded" })
+    .eq("household_id", householdId)
+    .eq("meal_plan_id", mealPlanId)
+    .eq("status", "active")
+    .neq("store_id", storeRow.id);
+  if (oldStoreError) throw oldStoreError;
+
   if (!plan.missingProducts.length) return listShoppingItems();
 
-  const storeRow = await getStore("Tops");
   const { data: existingList, error: findError } = await client
     .from("shopping_lists")
     .select("id")
@@ -178,7 +234,7 @@ export async function createShoppingItemsForMealPlan(mealPlanId: string, plan: G
   const productsToSave = [...combined.values()];
   let catalogMatches: Awaited<ReturnType<typeof searchOfficialCatalogBatch>> = [];
   try {
-    catalogMatches = await searchOfficialCatalogBatch(productsToSave.map((item) => item.name), "tops");
+    catalogMatches = await searchOfficialCatalogBatch(productsToSave.map((item) => item.name), "makro");
   } catch (error) {
     console.error("Catalog batch enrichment failed", error);
   }
@@ -195,14 +251,20 @@ export async function createShoppingItemsForMealPlan(mealPlanId: string, plan: G
     const productId = productByKey.get(`${item.normalizedName}:${item.unit}`);
     if (!productId) throw new Error(`Product was not persisted: ${item.normalizedName}`);
     const catalog = catalogByName.get(item.name.toLocaleLowerCase("ru"));
+    const purchase = buildCatalogPurchase(item.quantity, item.unit, catalog?.packageText || null);
     return {
       shopping_list_id: listId,
       product_id: productId,
-      planned_packages: 1,
-      estimated_price_thb: estimatedPrice,
+      planned_packages: purchase.packages,
+      estimated_price_thb: catalog?.priceThb === null || catalog?.priceThb === undefined
+        ? estimatedPrice
+        : Math.round(catalog.priceThb * purchase.packages),
       purchased: false,
       department: encodeShoppingMetadata({
-        detail: `${item.quantity} ${item.unit}`,
+        detail: purchase.detail,
+        requiredDetail: purchase.requiredDetail,
+        purchasedQuantity: purchase.purchasedQuantity,
+        purchasedUnit: purchase.purchasedUnit,
         url: catalog?.url || null,
         imageUrl: catalog?.imageUrl || null
       })
@@ -228,7 +290,8 @@ export async function deleteShoppingItem(id: string) {
 export async function completeShoppingLists() {
   const client = getSupabaseAdmin();
   const householdId = await getHouseholdId();
-  const { data: lists, error: listError } = await client.from("shopping_lists").select("id").eq("household_id", householdId).eq("status", "active");
+  const makro = await getStore("Makro");
+  const { data: lists, error: listError } = await client.from("shopping_lists").select("id").eq("household_id", householdId).eq("store_id", makro.id).eq("status", "active");
   if (listError) throw listError;
   if (!lists?.length) return { completed: 0, added: 0 };
 
@@ -243,7 +306,9 @@ export async function completeShoppingLists() {
     const product = Array.isArray(item.products) ? item.products[0] : item.products;
     if (!product?.display_name_ru || !product.default_unit) continue;
     const metadata = decodeShoppingMetadata(item.department);
-    const parsed = parsePurchasedQuantity(metadata.detail, Number(item.actual_packages || item.planned_packages || 1), product.default_unit as "g" | "ml" | "piece");
+    const parsed = metadata.purchasedQuantity && metadata.purchasedUnit
+      ? { quantity: metadata.purchasedQuantity, unit: metadata.purchasedUnit }
+      : parsePurchasedQuantity(metadata.detail, Number(item.actual_packages || item.planned_packages || 1), product.default_unit as "g" | "ml" | "piece");
     const { error: inventoryError } = await client.rpc("add_inventory_item", {
       p_display_name: product.display_name_ru,
       p_quantity: parsed.quantity,

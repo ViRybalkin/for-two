@@ -195,7 +195,7 @@ test("сохранённое меню загружается, а недоста�
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", items: [{ id: "saved-plan", mode: "stores", request, plan }] }) });
       return;
     }
-    await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ source: "supabase", id: "saved-plan", shoppingItems: [{ id: "rice", name: "Рис", detail: "200 g", price: 300, bought: false, store: "Tops" }] }) });
+    await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ source: "supabase", id: "saved-plan", shoppingItems: [{ id: "rice", name: "Рис", detail: "1 уп. · 1 kg · нужно 200 g", price: 300, bought: false, store: "Makro" }] }) });
   });
 
   await page.reload();
@@ -277,14 +277,14 @@ test("слайдер начинает с первого неприготовле
 
 test("сохранение нового меню из магазинов обновляет покупки", async ({ page }) => {
   await page.route("**/api/shopping", async (route) => {
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", items: [{ id: "old-milk", name: "Старое молоко", detail: "1 л", price: 80, bought: false, store: "Tops" }] }) });
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", items: [{ id: "old-milk", name: "Старое молоко", detail: "1 л", price: 80, bought: false, store: "Makro" }] }) });
   });
   await page.route("**/api/meal-plans", async (route) => {
     if (route.request().method() === "GET") {
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", items: [] }) });
       return;
     }
-    await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ source: "supabase", id: "new-plan", shoppingItems: [{ id: "rice", name: "Рис", detail: "200 g", price: 300, bought: false, store: "Tops" }] }) });
+    await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ source: "supabase", id: "new-plan", shoppingItems: [{ id: "rice", name: "Рис", detail: "1 уп. · 1 kg · нужно 200 g", price: 300, bought: false, store: "Makro" }] }) });
   });
   await page.route("**/api/meal-plans/generate", async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "openai", plan: {
@@ -321,7 +321,7 @@ test("пустой список восстанавливается из сохр
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", items: [] }) });
   });
   await page.route("**/api/meal-plans/saved-store-plan/shopping", async (route) => {
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", items: [{ id: "rice", name: "Рис", detail: "200 г", price: 300, bought: false, store: "Tops" }] }) });
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", items: [{ id: "rice", name: "Рис", detail: "1 уп. · 1 кг · нужно 200 г", price: 300, bought: false, store: "Makro" }] }) });
   });
   await page.reload();
   await page.getByRole("button", { name: "Покупки", exact: true }).click();
@@ -332,7 +332,7 @@ test("пустой список восстанавливается из сохр
 });
 
 test("завершённые покупки переходят в запасы", async ({ page }) => {
-  let shoppingItems = [{ id: "milk", name: "Молоко", detail: "2 × 1 л", price: 140, bought: false, store: "Tops" }];
+  let shoppingItems = [{ id: "milk", name: "Молоко", detail: "2 × 1 л", price: 140, bought: false, store: "Makro" }];
   await page.route("**/api/shopping", async (route) => {
     if (route.request().method() === "GET") {
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", items: shoppingItems }) });
@@ -364,7 +364,7 @@ test("товар из магазина показывает изображени
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ source: "supabase", items: [{ id: "rice", name: "Jasmine Rice", detail: "1 кг", price: 89, bought: false, store: "Tops", url: "https://www.tops.co.th/en/jasmine-rice", imageUrl: "https://cdn.example.com/rice.jpg" }] })
+      body: JSON.stringify({ source: "supabase", items: [{ id: "rice", name: "Jasmine Rice", detail: "1 уп. · 5 кг · нужно 200 г", price: 189, bought: false, store: "Makro", url: "https://www.makro.pro/p/jasmine-rice", imageUrl: "https://cdn.example.com/rice.jpg" }] })
     });
   });
   await page.route("https://cdn.example.com/rice.jpg", async (route) => {
@@ -375,7 +375,7 @@ test("товар из магазина показывает изображени
 
   const item = page.getByText("Jasmine Rice", { exact: true }).locator("xpath=ancestor::article");
   await expect(item.locator(".shopping-image")).toHaveAttribute("src", "https://cdn.example.com/rice.jpg");
-  await expect(item.getByRole("link", { name: "Открыть на сайте Tops" })).toHaveAttribute("href", "https://www.tops.co.th/en/jasmine-rice");
+  await expect(item.getByRole("link", { name: "Открыть на сайте Makro" })).toHaveAttribute("href", "https://www.makro.pro/p/jasmine-rice");
 });
 
 test("добавление продукта передаёт выбранные единицу и место хранения", async ({ page }) => {

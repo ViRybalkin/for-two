@@ -5,7 +5,7 @@ import { getOpenAI } from "@/lib/openai";
 
 export const catalogSearchRequestSchema = z.object({
   query: z.string().trim().min(2).max(120),
-  store: z.enum(["tops", "makro", "all"]).default("all")
+  store: z.literal("makro").default("makro")
 });
 
 const catalogSearchResultSchema = z.object({
@@ -150,7 +150,7 @@ async function searchOfficialCatalogChunk(names: string[], store: "tops" | "makr
     input: [
       {
         role: "system",
-        content: "Сопоставь каждый продукт с конкретной товарной страницей официального магазина. Русские названия сначала переведи на английский или тайский для поиска, но в queryName верни исходную строку без изменений. Для каждого queryName верни максимум одну уверенно подходящую карточку. Используй результаты поиска изображений, когда они относятся к найденной карточке товара. Не выдумывай URL, цену, фасовку или изображение. Если точной карточки нет, не добавляй этот продукт. imageUrl указывай только из image_result, связанного с официальной страницей товара."
+        content: "Сопоставь каждый продукт с конкретной товарной страницей официального магазина. Русские названия сначала переведи на английский или тайский для поиска, но в queryName верни исходную строку без изменений. Для каждого queryName верни максимум одну уверенно подходящую карточку. packageText — фактическая продаваемая фасовка целиком, а не количество из запроса; нормализуй её как '700 ml', '1 kg' или '12 x 700 ml'. Используй результаты поиска изображений, когда они относятся к найденной карточке товара. Не выдумывай URL, цену, фасовку или изображение. Если точной карточки нет, не добавляй этот продукт. imageUrl указывай только из image_result, связанного с официальной страницей товара."
       },
       {
         role: "user",
@@ -175,7 +175,7 @@ async function searchOfficialCatalogChunk(names: string[], store: "tops" | "makr
   }));
 }
 
-export async function searchOfficialCatalogBatch(names: string[], store: "tops" | "makro" = "tops") {
+export async function searchOfficialCatalogBatch(names: string[], store: "tops" | "makro" = "makro") {
   const uniqueNames = [...new Set(names.map((name) => name.trim()).filter(Boolean))].slice(0, 50);
   const chunks: string[][] = [];
   for (let index = 0; index < uniqueNames.length; index += 6) chunks.push(uniqueNames.slice(index, index + 6));
@@ -184,9 +184,7 @@ export async function searchOfficialCatalogBatch(names: string[], store: "tops" 
 }
 
 export async function searchOfficialCatalog(input: z.infer<typeof catalogSearchRequestSchema>) {
-  const allowedDomains = input.store === "all"
-    ? [...officialDomains.tops, ...officialDomains.makro]
-    : [...officialDomains[input.store]];
+  const allowedDomains = [...officialDomains.makro];
 
   const response = await getOpenAI().responses.parse({
     model: process.env.OPENAI_SEARCH_MODEL || process.env.OPENAI_TEXT_MODEL || "gpt-6-luna",
@@ -205,7 +203,7 @@ export async function searchOfficialCatalog(input: z.infer<typeof catalogSearchR
       },
       {
         role: "user",
-        content: `Точечно найди товар «${input.query}» в ${input.store === "all" ? "Tops и Makro" : input.store}. Верни не более 12 наиболее подходящих товаров.`
+        content: `Точечно найди товар «${input.query}» в Makro. Верни не более 12 наиболее подходящих товаров. packageText должен описывать фактическую продаваемую упаковку целиком, например 700 ml, 1 kg или 12 x 700 ml.`
       }
     ],
     text: { format: zodTextFormat(catalogSearchResultSchema, "catalog_search") }

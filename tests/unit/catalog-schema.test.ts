@@ -3,11 +3,12 @@ import { catalogSearchRequestSchema, extractProductImage, extractSearchResultIma
 
 describe("catalogSearchRequestSchema", () => {
   it("normalizes a valid request", () => {
-    expect(catalogSearchRequestSchema.parse({ query: " jasmine rice ", store: "all" })).toEqual({ query: "jasmine rice", store: "all" });
+    expect(catalogSearchRequestSchema.parse({ query: " jasmine rice ", store: "makro" })).toEqual({ query: "jasmine rice", store: "makro" });
   });
 
   it("limits query length and store values", () => {
-    expect(catalogSearchRequestSchema.safeParse({ query: "a", store: "all" }).success).toBe(false);
+    expect(catalogSearchRequestSchema.safeParse({ query: "a", store: "makro" }).success).toBe(false);
+    expect(catalogSearchRequestSchema.safeParse({ query: "rice", store: "tops" }).success).toBe(false);
     expect(catalogSearchRequestSchema.safeParse({ query: "rice", store: "lotus" }).success).toBe(false);
   });
 

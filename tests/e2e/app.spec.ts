@@ -37,7 +37,7 @@ test("локальные API валидируют данные и работаю
 
   const invalidCatalog = await request.get("/api/catalog/search?q=x");
   expect(invalidCatalog.status()).toBe(400);
-  const catalog = await request.get("/api/catalog/search?q=jasmine%20rice&store=all");
+  const catalog = await request.get("/api/catalog/search?q=jasmine%20rice&store=makro");
   expect(catalog.ok()).toBe(true);
   expect(await catalog.json()).toMatchObject({ source: "demo", products: [] });
 

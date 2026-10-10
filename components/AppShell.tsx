@@ -484,11 +484,10 @@ function GeneratedMenu({ plan, revisionInstruction, onRevisionInstruction, onRev
 }
 
 function ShoppingScreen({ items, loading, savedPlan, setItems, setInventory, notify, onSearch }: { items: ShoppingItem[]; loading: boolean; savedPlan: SavedMealPlan | null; setItems: React.Dispatch<React.SetStateAction<ShoppingItem[]>>; setInventory: React.Dispatch<React.SetStateAction<InventoryItem[]>>; notify: (text: string) => void; onSearch: () => void }) {
-  const [store, setStore] = useState<"Tops" | "Makro">("Tops");
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [completing, setCompleting] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const visible = items.filter((item) => item.store === store);
+  const visible = items.filter((item) => item.store === "Makro");
   const done = visible.filter((item) => item.bought).length;
   const total = visible.reduce((sum, item) => sum + item.price, 0);
   const toggle = async (id: string) => {
@@ -541,7 +540,7 @@ function ShoppingScreen({ items, loading, savedPlan, setItems, setInventory, not
   return (
     <section className="screen">
       <BrandHeader title="Покупки" subtitle={`${items.length} ${items.length % 10 === 1 && items.length % 100 !== 11 ? "товар" : items.length % 10 >= 2 && items.length % 10 <= 4 && (items.length % 100 < 12 || items.length % 100 > 14) ? "товара" : "товаров"} в активном списке`} action={<button className="icon-button" onClick={onSearch} aria-label="Найти товар в магазинах"><Plus /></button>} />
-      <div className="store-tabs"><button className={store === "Tops" ? "active tops" : ""} onClick={() => setStore("Tops")}><span>T</span><b>Tops</b><small>{items.filter((i) => i.store === "Tops").length} товаров</small></button><button className={store === "Makro" ? "active makro" : ""} onClick={() => setStore("Makro")}><span>M</span><b>Makro</b><small>{items.filter((i) => i.store === "Makro").length} товаров</small></button></div>
+      <div className="store-tabs"><button className="active makro" type="button"><span>M</span><b>Makro</b><small>{visible.length} товаров</small></button></div>
       <div className="shop-progress"><div><span>Собрано {done} из {visible.length}</span><b>≈ {total} ฿</b></div><div className="progress-track"><i style={{ width: `${visible.length ? (done / visible.length) * 100 : 0}%` }} /></div></div>
       <div className="shopping-list">{loading && <div className="catalog-message">Загружаем покупки…</div>}{visible.map((item) => <article key={item.id} className={item.bought ? "shopping-item bought" : "shopping-item"}><label className="shopping-check" aria-label={`${item.bought ? "Вернуть в покупки" : "Отметить купленным"}: ${item.name}`}><input type="checkbox" checked={item.bought} disabled={pendingId === item.id} onChange={() => void toggle(item.id)} /><span className="fake-check"><Check size={15} /></span></label>{item.imageUrl ? <img className="shopping-image" src={item.imageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className="shopping-image placeholder"><ShoppingBasket size={18} /></span>}<span className="shopping-copy"><b>{item.name}</b><small>{item.detail}</small>{item.url && <a href={item.url} target="_blank" rel="noreferrer">Открыть на сайте {item.store}</a>}</span><strong>{item.price} ฿</strong></article>)}{!loading && !visible.length && <EmptyState icon={<ShoppingBasket />} title="Список пуст" text="Добавьте товары из официальных каталогов" />}</div>
       {!loading && items.length === 0 && savedPlan?.mode === "stores" && savedPlan.plan.missingProducts.length > 0 && <button className="secondary-action shopping-sync" disabled={syncing} onClick={() => void syncFromMenu()}>{syncing ? <span className="spinner" /> : <ShoppingBasket size={18} />}{syncing ? "Создаём список…" : "Создать список из сохранённого меню"}</button>}
@@ -593,7 +592,6 @@ function AddProductSheet({ onClose, onAdd }: { onClose: () => void; onAdd: (item
 
 function CatalogSearchSheet({ onClose, onAdd }: { onClose: () => void; onAdd: (product: CatalogProduct) => Promise<boolean> }) {
   const [query, setQuery] = useState("");
-  const [store, setStore] = useState<"all" | "tops" | "makro">("all");
   const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -605,7 +603,7 @@ function CatalogSearchSheet({ onClose, onAdd }: { onClose: () => void; onAdd: (p
     setLoading(true);
     setMessage(null);
     try {
-      const response = await fetch(`/api/catalog/search?q=${encodeURIComponent(query.trim())}&store=${store}`);
+      const response = await fetch(`/api/catalog/search?q=${encodeURIComponent(query.trim())}&store=makro`);
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error?.message || "Поиск недоступен");
       setProducts(data.products || []);
@@ -618,10 +616,9 @@ function CatalogSearchSheet({ onClose, onAdd }: { onClose: () => void; onAdd: (p
     }
   };
 
-  return <div className="overlay" role="dialog" aria-modal="true"><div className="sheet tall"><div className="sheet-handle" /><div className="sheet-title"><div><p className="eyebrow">TOPS И MAKRO</p><h2>Найти товар</h2></div><button className="icon-button" onClick={onClose} aria-label="Закрыть"><X /></button></div>
+  return <div className="overlay" role="dialog" aria-modal="true"><div className="sheet tall"><div className="sheet-handle" /><div className="sheet-title"><div><p className="eyebrow">MAKRO</p><h2>Найти товар</h2></div><button className="icon-button" onClick={onClose} aria-label="Закрыть"><X /></button></div>
     <form className="catalog-form" onSubmit={search}>
       <label className="search-box"><Search size={19} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Например, jasmine rice" autoFocus /></label>
-      <div className="choice-wrap">{(["all", "tops", "makro"] as const).map((value) => <button type="button" key={value} className={store === value ? "choice active" : "choice"} onClick={() => setStore(value)}>{value === "all" ? "Оба магазина" : value === "tops" ? "Tops" : "Makro"}</button>)}</div>
       <button className="main-action" type="submit" disabled={loading || query.trim().length < 2}>{loading ? <span className="spinner" /> : <Search size={19} />}{loading ? "Ищем на официальных сайтах…" : "Найти"}</button>
     </form>
     {message && <div className="catalog-message">{message}</div>}

@@ -9,7 +9,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const parsed = catalogSearchRequestSchema.safeParse({
     query: url.searchParams.get("q"),
-    store: url.searchParams.get("store") || "all"
+    store: url.searchParams.get("store") || "makro"
   });
 
   if (!parsed.success) {
