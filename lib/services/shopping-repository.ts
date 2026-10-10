@@ -138,6 +138,9 @@ export async function createShoppingItemsForMealPlan(mealPlanId: string, plan: G
     .select("id")
     .eq("meal_plan_id", mealPlanId)
     .eq("store_id", storeRow.id)
+    .eq("status", "active")
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
   if (findError) throw findError;
   let listId = existingList?.id as string | undefined;

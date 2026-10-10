@@ -160,8 +160,8 @@ export function AppShell() {
       <div className="phone-surface">
         {tab === "today" && <TodayScreen savedPlan={savedPlan} inventory={inventory} loading={planLoading} onMenu={() => go("menu")} onInventory={() => go("inventory")} onRecipe={openRecipe} onAdd={() => setSheet("add")} onSettings={() => setSheet("settings")} />}
         {tab === "inventory" && <InventoryScreen items={inventory} loading={inventoryLoading} setItems={setInventory} onAdd={() => setSheet("add")} notify={notify} />}
-        {tab === "menu" && <MenuScreen inventory={inventory} setShopping={setShopping} savedPlan={savedPlan} onPlanSaved={setSavedPlan} onRecipe={openRecipe} notify={notify} />}
-        {tab === "shopping" && <ShoppingScreen items={shopping} loading={shoppingLoading} setItems={setShopping} setInventory={setInventory} notify={notify} onSearch={() => setSheet("catalog")} />}
+        {tab === "menu" && <MenuScreen inventory={inventory} setShopping={setShopping} savedPlan={savedPlan} onPlanSaved={setSavedPlan} onRecipe={openRecipe} onShopping={() => go("shopping")} notify={notify} />}
+        {tab === "shopping" && <ShoppingScreen items={shopping} loading={shoppingLoading} savedPlan={savedPlan} setItems={setShopping} setInventory={setInventory} notify={notify} onSearch={() => setSheet("catalog")} />}
         {tab === "more" && <MoreScreen savedPlan={savedPlan} shopping={shopping} onSettings={() => setSheet("settings")} />}
 
         <nav className="bottom-nav" aria-label="Основная навигация">
@@ -348,7 +348,7 @@ function InventoryScreen({ items, loading, setItems, onAdd, notify }: { items: I
   );
 }
 
-function MenuScreen({ inventory, setShopping, savedPlan, onPlanSaved, onRecipe, notify }: { inventory: InventoryItem[]; setShopping: React.Dispatch<React.SetStateAction<ShoppingItem[]>>; savedPlan: SavedMealPlan | null; onPlanSaved: (plan: SavedMealPlan) => void; onRecipe: (dish: MealDish) => void; notify: (text: string) => void }) {
+function MenuScreen({ inventory, setShopping, savedPlan, onPlanSaved, onRecipe, onShopping, notify }: { inventory: InventoryItem[]; setShopping: React.Dispatch<React.SetStateAction<ShoppingItem[]>>; savedPlan: SavedMealPlan | null; onPlanSaved: (plan: SavedMealPlan) => void; onRecipe: (dish: MealDish) => void; onShopping: () => void; notify: (text: string) => void }) {
   const [mode, setMode] = useState<"inventory" | "stores">("inventory");
   const [generated, setGenerated] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -418,6 +418,7 @@ function MenuScreen({ inventory, setShopping, savedPlan, onPlanSaved, onRecipe, 
       if (data.id) onPlanSaved({ id: data.id, mode, request: lastRequest, plan, completed: [] });
       if (Array.isArray(data.shoppingItems)) setShopping(data.shoppingItems);
       notify(mode === "stores" ? `Меню сохранено · ${data.shoppingItems?.length || 0} покупок добавлено` : "Меню сохранено в базе");
+      if (mode === "stores" && data.shoppingItems?.length) onShopping();
     } catch (error) {
       notify(error instanceof Error ? error.message : "Не удалось сохранить меню");
     } finally {
@@ -482,10 +483,11 @@ function GeneratedMenu({ plan, revisionInstruction, onRevisionInstruction, onRev
   </>;
 }
 
-function ShoppingScreen({ items, loading, setItems, setInventory, notify, onSearch }: { items: ShoppingItem[]; loading: boolean; setItems: React.Dispatch<React.SetStateAction<ShoppingItem[]>>; setInventory: React.Dispatch<React.SetStateAction<InventoryItem[]>>; notify: (text: string) => void; onSearch: () => void }) {
+function ShoppingScreen({ items, loading, savedPlan, setItems, setInventory, notify, onSearch }: { items: ShoppingItem[]; loading: boolean; savedPlan: SavedMealPlan | null; setItems: React.Dispatch<React.SetStateAction<ShoppingItem[]>>; setInventory: React.Dispatch<React.SetStateAction<InventoryItem[]>>; notify: (text: string) => void; onSearch: () => void }) {
   const [store, setStore] = useState<"Tops" | "Makro">("Tops");
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [completing, setCompleting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const visible = items.filter((item) => item.store === store);
   const done = visible.filter((item) => item.bought).length;
   const total = visible.reduce((sum, item) => sum + item.price, 0);
@@ -521,12 +523,28 @@ function ShoppingScreen({ items, loading, setItems, setInventory, notify, onSear
       setCompleting(false);
     }
   };
+  const syncFromMenu = async () => {
+    if (!savedPlan || savedPlan.mode !== "stores") return;
+    setSyncing(true);
+    try {
+      const response = await fetch(`/api/meal-plans/${savedPlan.id}/shopping`, { method: "POST" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error?.message || "Не удалось создать список покупок");
+      setItems(Array.isArray(data.items) ? data.items : []);
+      notify(data.items?.length ? `Список создан · ${data.items.length} товаров` : "В меню нет недостающих продуктов");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Не удалось создать список покупок");
+    } finally {
+      setSyncing(false);
+    }
+  };
   return (
     <section className="screen">
       <BrandHeader title="Покупки" subtitle={`${items.length} ${items.length % 10 === 1 && items.length % 100 !== 11 ? "товар" : items.length % 10 >= 2 && items.length % 10 <= 4 && (items.length % 100 < 12 || items.length % 100 > 14) ? "товара" : "товаров"} в активном списке`} action={<button className="icon-button" onClick={onSearch} aria-label="Найти товар в магазинах"><Plus /></button>} />
       <div className="store-tabs"><button className={store === "Tops" ? "active tops" : ""} onClick={() => setStore("Tops")}><span>T</span><b>Tops</b><small>{items.filter((i) => i.store === "Tops").length} товаров</small></button><button className={store === "Makro" ? "active makro" : ""} onClick={() => setStore("Makro")}><span>M</span><b>Makro</b><small>{items.filter((i) => i.store === "Makro").length} товаров</small></button></div>
       <div className="shop-progress"><div><span>Собрано {done} из {visible.length}</span><b>≈ {total} ฿</b></div><div className="progress-track"><i style={{ width: `${visible.length ? (done / visible.length) * 100 : 0}%` }} /></div></div>
       <div className="shopping-list">{loading && <div className="catalog-message">Загружаем покупки…</div>}{visible.map((item) => <article key={item.id} className={item.bought ? "shopping-item bought" : "shopping-item"}><label className="shopping-check" aria-label={`${item.bought ? "Вернуть в покупки" : "Отметить купленным"}: ${item.name}`}><input type="checkbox" checked={item.bought} disabled={pendingId === item.id} onChange={() => void toggle(item.id)} /><span className="fake-check"><Check size={15} /></span></label>{item.imageUrl ? <img className="shopping-image" src={item.imageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className="shopping-image placeholder"><ShoppingBasket size={18} /></span>}<span className="shopping-copy"><b>{item.name}</b><small>{item.detail}</small>{item.url && <a href={item.url} target="_blank" rel="noreferrer">Открыть на сайте {item.store}</a>}</span><strong>{item.price} ฿</strong></article>)}{!loading && !visible.length && <EmptyState icon={<ShoppingBasket />} title="Список пуст" text="Добавьте товары из официальных каталогов" />}</div>
+      {!loading && items.length === 0 && savedPlan?.mode === "stores" && savedPlan.plan.missingProducts.length > 0 && <button className="secondary-action shopping-sync" disabled={syncing} onClick={() => void syncFromMenu()}>{syncing ? <span className="spinner" /> : <ShoppingBasket size={18} />}{syncing ? "Создаём список…" : "Создать список из сохранённого меню"}</button>}
       <div className="total-card"><span><small>Ориентировочно</small><b>{total} ฿</b></span><span><small>Осталось купить</small><b>{visible.filter((i) => !i.bought).reduce((sum, i) => sum + i.price, 0)} ฿</b></span></div>
       <button className="main-action bottom-space" disabled={completing || items.length === 0 || items.some((item) => !item.bought)} onClick={() => void complete()}>{completing ? "Переносим в запасы…" : items.some((item) => !item.bought) ? "Отметьте все товары купленными" : "Завершить и добавить в запасы"}</button>
     </section>

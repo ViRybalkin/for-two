@@ -301,6 +301,31 @@ test("сохранение нового меню из магазинов обн�
   await expect(page.getByText("Рис", { exact: true })).toBeVisible();
 });
 
+test("пустой список восстанавливается из сохранённого меню магазина", async ({ page }) => {
+  const request = { mode: "stores", days: 1, servings: 2, budgetThb: 500, cuisines: ["тайская"], mealTypes: ["dinner"], inventory: [] };
+  const plan = {
+    title: "Меню из магазина",
+    summary: { days: 1, servings: 2, estimatedTotalThb: 300, inventoryCoveragePercent: 0, budgetWarning: null },
+    dishes: [{ date: TODAY, mealType: "dinner", title: "Карри с рисом", cookingMinutes: 30, difficulty: "easy", servings: 2, estimatedCostThb: 300, ingredients: [{ name: "Рис", quantity: 200, unit: "g", fromInventory: false }], instructions: ["Приготовить"], nutritionPerServing: { kcal: 500, proteinG: 20, fatG: 15, carbsG: 70, fiberG: 4 } }],
+    missingProducts: [{ name: "Рис", quantity: 200, unit: "g" }]
+  };
+  await page.route("**/api/meal-plans", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", items: [{ id: "saved-store-plan", mode: "stores", request, plan, completed: [] }] }) });
+  });
+  await page.route("**/api/shopping", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", items: [] }) });
+  });
+  await page.route("**/api/meal-plans/saved-store-plan/shopping", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", items: [{ id: "rice", name: "Рис", detail: "200 г", price: 300, bought: false, store: "Tops" }] }) });
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "Покупки", exact: true }).click();
+  await page.getByRole("button", { name: "Создать список из сохранённого меню" }).click();
+
+  await expect(page.getByText("Рис", { exact: true })).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("Список создан · 1 товаров");
+});
+
 test("завершённые покупки переходят в запасы", async ({ page }) => {
   let shoppingItems = [{ id: "milk", name: "Молоко", detail: "2 × 1 л", price: 140, bought: false, store: "Tops" }];
   await page.route("**/api/shopping", async (route) => {
