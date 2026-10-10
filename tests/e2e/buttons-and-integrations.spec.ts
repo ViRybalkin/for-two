@@ -164,12 +164,14 @@ test("UI использует ответ модели и отправляет и
   await page.getByRole("button", { name: "Увеличить порции" }).click();
   await page.getByPlaceholder("Например: больше овощей, без острого…").fill("без острого");
   await page.getByRole("button", { name: "Японская" }).click();
+  await page.getByRole("button", { name: "Перуанская" }).click();
   await page.getByRole("button", { name: "Составить меню", exact: true }).click();
 
   await expect(page.getByText("Интеграционный суп", { exact: true })).toBeVisible();
   expect(requestBody).not.toBeNull();
   expect(requestBody).toMatchObject({ days: 4, servings: 3, wish: "без острого" });
   expect((requestBody as unknown as { cuisines: string[] }).cuisines).toContain("японская");
+  expect((requestBody as unknown as { cuisines: string[] }).cuisines).toContain("перуанская");
   await page.getByPlaceholder(/Например: убери ужин/).fill("Замени суп на овощной и убери рис");
   await page.getByRole("button", { name: "Применить изменения" }).click();
   await expect(page.getByText("Овощной суп", { exact: true })).toBeVisible();

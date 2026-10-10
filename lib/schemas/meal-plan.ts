@@ -5,7 +5,7 @@ export const mealPlanRequestSchema = z.object({
   days: z.number().int().min(1).max(14),
   servings: z.number().int().min(1).max(12),
   budgetThb: z.number().positive().max(100_000).optional(),
-  cuisines: z.array(z.string().min(1).max(60)).max(20),
+  cuisines: z.array(z.string().min(1).max(60)).max(25),
   mealTypes: z.array(z.enum(["breakfast", "lunch", "dinner", "snack"])).min(1).max(4),
   inventory: z.array(z.object({
     name: z.string().min(1).max(120),
