@@ -2,6 +2,7 @@ import "server-only";
 import { zodTextFormat } from "openai/helpers/zod";
 import { getOpenAI } from "@/lib/openai";
 import { generatedMealPlanSchema, type MealPlanRevisionRequest } from "@/lib/schemas/meal-plan";
+import { MEAL_PLAN_AI_REQUEST_OPTIONS } from "@/lib/meal-plan-ai-request";
 
 export async function reviseMealPlan(input: MealPlanRevisionRequest) {
   const currentPlan = generatedMealPlanSchema.parse(input.plan);
@@ -28,7 +29,7 @@ export async function reviseMealPlan(input: MealPlanRevisionRequest) {
       }
     ],
     text: { format: zodTextFormat(generatedMealPlanSchema, "revised_meal_plan") }
-  });
+  }, MEAL_PLAN_AI_REQUEST_OPTIONS);
 
   if (!response.output_parsed) throw new Error("Revised meal plan was not returned");
   return { plan: response.output_parsed, usage: response.usage, model: response.model };

@@ -5,7 +5,7 @@ import { configurationError, isDemoMode } from "@/lib/runtime-mode";
 import { getOpenAIClientError, getOpenAIErrorDiagnostic } from "@/lib/openai-error";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST(request: Request) {
   const parsed = mealPlanRevisionRequestSchema.safeParse(await request.json().catch(() => null));

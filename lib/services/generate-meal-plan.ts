@@ -3,6 +3,7 @@ import { zodTextFormat } from "openai/helpers/zod";
 import { getOpenAI } from "@/lib/openai";
 import { generatedMealPlanSchema, type MealPlanRequest } from "@/lib/schemas/meal-plan";
 import { getBangkokDate, normalizeMealPlanDates } from "@/lib/meal-plan-dates";
+import { MEAL_PLAN_AI_REQUEST_OPTIONS } from "@/lib/meal-plan-ai-request";
 
 export async function generateMealPlan(input: MealPlanRequest) {
   const client = getOpenAI();
@@ -29,7 +30,7 @@ export async function generateMealPlan(input: MealPlanRequest) {
       }
     ],
     text: { format: zodTextFormat(generatedMealPlanSchema, "meal_plan") }
-  });
+  }, MEAL_PLAN_AI_REQUEST_OPTIONS);
 
   if (!response.output_parsed) throw new Error("Meal plan was not returned");
   return { plan: normalizeMealPlanDates(response.output_parsed, input.days), usage: response.usage, model: response.model };

@@ -1,3 +1,5 @@
+import { APIConnectionTimeoutError } from "openai";
+
 type ErrorRecord = Record<string, unknown>;
 
 export type OpenAIErrorDiagnostic = {
@@ -31,6 +33,10 @@ export function getOpenAIErrorDiagnostic(error: unknown): OpenAIErrorDiagnostic 
 
 export function getOpenAIClientError(error: unknown) {
   const diagnostic = getOpenAIErrorDiagnostic(error);
+
+  if (error instanceof APIConnectionTimeoutError) {
+    return { status: 503, error: { code: "AI_TIMEOUT", message: "Генерация заняла слишком много времени. Попробуйте ещё раз." } };
+  }
 
   if (diagnostic.status === 401) {
     return { status: 503, error: { code: "AI_AUTH_ERROR", message: "Vercel не может авторизоваться в OpenAI. Проверьте OPENAI_API_KEY." } };

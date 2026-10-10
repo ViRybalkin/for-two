@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import OpenAI from "openai";
 import { getOpenAIClientError, getOpenAIErrorDiagnostic } from "@/lib/openai-error";
+import { MEAL_PLAN_AI_REQUEST_OPTIONS, MEAL_PLAN_AI_TIMEOUT_MS } from "@/lib/meal-plan-ai-request";
 
 describe("OpenAI error handling", () => {
   it("reports rejected API keys without exposing them", () => {
@@ -29,5 +31,18 @@ describe("OpenAI error handling", () => {
       requestId: "req_test",
       message: "Unknown OpenAI error"
     });
+  });
+
+  it("returns a clear error when OpenAI exceeds the application deadline", () => {
+    const result = getOpenAIClientError(new OpenAI.APIConnectionTimeoutError());
+    expect(result).toEqual({
+      status: 503,
+      error: { code: "AI_TIMEOUT", message: "Генерация заняла слишком много времени. Попробуйте ещё раз." }
+    });
+  });
+
+  it("leaves time for Vercel to return the timeout response", () => {
+    expect(MEAL_PLAN_AI_REQUEST_OPTIONS).toEqual({ timeout: 240_000, maxRetries: 0 });
+    expect(MEAL_PLAN_AI_TIMEOUT_MS).toBeLessThan(300_000);
   });
 });
