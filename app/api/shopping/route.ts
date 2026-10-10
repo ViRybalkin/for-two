@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isSupabaseConfigured } from "@/lib/services/inventory-repository";
+import { isSupabaseConfigured, listInventory } from "@/lib/services/inventory-repository";
 import { addShoppingItem, completeShoppingLists, listShoppingItems, shoppingItemInputSchema } from "@/lib/services/shopping-repository";
 import { configurationError, isDemoMode } from "@/lib/runtime-mode";
 
@@ -26,9 +26,10 @@ export async function POST(request: Request) {
 }
 
 export async function PUT() {
-  if (!isSupabaseConfigured()) return isDemoMode() ? NextResponse.json({ source: "demo", completed: 0 }) : NextResponse.json(configurationError, { status: 503 });
+  if (!isSupabaseConfigured()) return isDemoMode() ? NextResponse.json({ source: "demo", completed: 0, added: 0, inventory: [] }) : NextResponse.json(configurationError, { status: 503 });
   try {
-    return NextResponse.json({ source: "supabase", completed: await completeShoppingLists() });
+    const result = await completeShoppingLists();
+    return NextResponse.json({ source: "supabase", ...result, inventory: await listInventory() });
   } catch (error) {
     console.error("Shopping completion failed", error);
     return NextResponse.json({ error: { code: "DATABASE_UNAVAILABLE", message: "Не удалось завершить покупки" } }, { status: 503 });

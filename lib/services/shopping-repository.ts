@@ -19,6 +19,21 @@ function localizeDetail(detail: string | null) {
     .replace(/\s+g$/, " г");
 }
 
+const unitAliases = { g: "g", "г": "g", kg: "g", "кг": "g", ml: "ml", "мл": "ml", l: "ml", "л": "ml", piece: "piece", "шт": "piece" } as const;
+
+export function parsePurchasedQuantity(detail: string | null, fallbackPackages: number, defaultUnit: "g" | "ml" | "piece") {
+  const normalized = (detail || "").toLowerCase().replace(",", ".");
+  const multiplied = normalized.match(/(\d+(?:\.\d+)?)\s*[×xх*]\s*(\d+(?:\.\d+)?)\s*(кг|kg|г|g|мл|ml|л|l|шт|piece)(?=\s|·|$)/);
+  const simple = normalized.match(/(\d+(?:\.\d+)?)\s*(кг|kg|г|g|мл|ml|л|l|шт|piece)(?=\s|·|$)/);
+  const match = multiplied || simple;
+  if (!match) return { quantity: Math.max(1, fallbackPackages), unit: defaultUnit };
+  const rawUnit = multiplied ? match[3] : match[2];
+  let quantity = Number(match[1]) * (multiplied ? Number(match[2]) : 1);
+  if (rawUnit === "кг" || rawUnit === "kg") quantity *= 1000;
+  if (rawUnit === "л" || rawUnit === "l") quantity *= 1000;
+  return { quantity, unit: unitAliases[rawUnit as keyof typeof unitAliases] };
+}
+
 async function getHouseholdId() {
   const { data, error } = await getSupabaseAdmin().from("households").select("id").order("created_at").limit(1).single();
   if (error) throw error;
@@ -154,7 +169,33 @@ export async function deleteShoppingItem(id: string) {
 export async function completeShoppingLists() {
   const client = getSupabaseAdmin();
   const householdId = await getHouseholdId();
-  const { data, error } = await client.from("shopping_lists").update({ status: "completed" }).eq("household_id", householdId).eq("status", "active").select("id");
+  const { data: lists, error: listError } = await client.from("shopping_lists").select("id").eq("household_id", householdId).eq("status", "active");
+  if (listError) throw listError;
+  if (!lists?.length) return { completed: 0, added: 0 };
+
+  const { data: purchasedItems, error: itemError } = await client
+    .from("shopping_list_items")
+    .select("id,planned_packages,actual_packages,department,products(display_name_ru,default_unit)")
+    .in("shopping_list_id", lists.map((list) => list.id))
+    .eq("purchased", true);
+  if (itemError) throw itemError;
+
+  for (const item of purchasedItems || []) {
+    const product = Array.isArray(item.products) ? item.products[0] : item.products;
+    if (!product?.display_name_ru || !product.default_unit) continue;
+    const parsed = parsePurchasedQuantity(item.department, Number(item.actual_packages || item.planned_packages || 1), product.default_unit as "g" | "ml" | "piece");
+    const { error: inventoryError } = await client.rpc("add_inventory_item", {
+      p_display_name: product.display_name_ru,
+      p_quantity: parsed.quantity,
+      p_unit: parsed.unit,
+      p_storage: "pantry",
+      p_expiry_date: null,
+      p_idempotency_key: item.id
+    });
+    if (inventoryError && inventoryError.code !== "23505") throw inventoryError;
+  }
+
+  const { data, error } = await client.from("shopping_lists").update({ status: "completed" }).in("id", lists.map((list) => list.id)).select("id");
   if (error) throw error;
-  return data?.length || 0;
+  return { completed: data?.length || 0, added: purchasedItems?.length || 0 };
 }

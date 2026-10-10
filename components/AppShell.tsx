@@ -161,7 +161,7 @@ export function AppShell() {
         {tab === "today" && <TodayScreen savedPlan={savedPlan} inventory={inventory} loading={planLoading} onMenu={() => go("menu")} onInventory={() => go("inventory")} onRecipe={openRecipe} onAdd={() => setSheet("add")} onSettings={() => setSheet("settings")} />}
         {tab === "inventory" && <InventoryScreen items={inventory} loading={inventoryLoading} setItems={setInventory} onAdd={() => setSheet("add")} notify={notify} />}
         {tab === "menu" && <MenuScreen inventory={inventory} setShopping={setShopping} savedPlan={savedPlan} onPlanSaved={setSavedPlan} onRecipe={openRecipe} notify={notify} />}
-        {tab === "shopping" && <ShoppingScreen items={shopping} loading={shoppingLoading} setItems={setShopping} notify={notify} onSearch={() => setSheet("catalog")} />}
+        {tab === "shopping" && <ShoppingScreen items={shopping} loading={shoppingLoading} setItems={setShopping} setInventory={setInventory} notify={notify} onSearch={() => setSheet("catalog")} />}
         {tab === "more" && <MoreScreen savedPlan={savedPlan} shopping={shopping} onSettings={() => setSheet("settings")} />}
 
         <nav className="bottom-nav" aria-label="Основная навигация">
@@ -482,7 +482,7 @@ function GeneratedMenu({ plan, revisionInstruction, onRevisionInstruction, onRev
   </>;
 }
 
-function ShoppingScreen({ items, loading, setItems, notify, onSearch }: { items: ShoppingItem[]; loading: boolean; setItems: React.Dispatch<React.SetStateAction<ShoppingItem[]>>; notify: (text: string) => void; onSearch: () => void }) {
+function ShoppingScreen({ items, loading, setItems, setInventory, notify, onSearch }: { items: ShoppingItem[]; loading: boolean; setItems: React.Dispatch<React.SetStateAction<ShoppingItem[]>>; setInventory: React.Dispatch<React.SetStateAction<InventoryItem[]>>; notify: (text: string) => void; onSearch: () => void }) {
   const [store, setStore] = useState<"Tops" | "Makro">("Tops");
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [completing, setCompleting] = useState(false);
@@ -513,7 +513,8 @@ function ShoppingScreen({ items, loading, setItems, notify, onSearch }: { items:
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error?.message || "Не удалось завершить покупки");
       setItems([]);
-      notify("Покупки завершены и сохранены");
+      if (Array.isArray(data.inventory)) setInventory(data.inventory);
+      notify(data.added ? `${data.added} товаров добавлено в запасы` : "Покупки завершены · купленных товаров не было");
     } catch (error) {
       notify(error instanceof Error ? error.message : "Не удалось завершить покупки");
     } finally {
@@ -527,7 +528,7 @@ function ShoppingScreen({ items, loading, setItems, notify, onSearch }: { items:
       <div className="shop-progress"><div><span>Собрано {done} из {visible.length}</span><b>≈ {total} ฿</b></div><div className="progress-track"><i style={{ width: `${visible.length ? (done / visible.length) * 100 : 0}%` }} /></div></div>
       <div className="shopping-list">{loading && <div className="catalog-message">Загружаем покупки…</div>}{visible.map((item) => <label key={item.id} className={item.bought ? "shopping-item bought" : "shopping-item"}><input type="checkbox" checked={item.bought} disabled={pendingId === item.id} onChange={() => void toggle(item.id)} /><span className="fake-check"><Check size={15} /></span><span><b>{item.name}</b><small>{item.detail}</small></span><strong>{item.price} ฿</strong></label>)}{!loading && !visible.length && <EmptyState icon={<ShoppingBasket />} title="Список пуст" text="Добавьте товары из официальных каталогов" />}</div>
       <div className="total-card"><span><small>Ориентировочно</small><b>{total} ฿</b></span><span><small>Осталось купить</small><b>{visible.filter((i) => !i.bought).reduce((sum, i) => sum + i.price, 0)} ฿</b></span></div>
-      <button className="main-action bottom-space" disabled={completing || items.length === 0} onClick={() => void complete()}>{completing ? "Сохраняем…" : "Завершить покупки"}</button>
+      <button className="main-action bottom-space" disabled={completing || items.length === 0 || items.some((item) => !item.bought)} onClick={() => void complete()}>{completing ? "Переносим в запасы…" : items.some((item) => !item.bought) ? "Отметьте все товары купленными" : "Завершить и добавить в запасы"}</button>
     </section>
   );
 }

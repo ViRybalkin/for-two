@@ -1,4 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
+import { getBangkokDate } from "@/lib/meal-plan-dates";
+
+const TODAY = getBangkokDate();
 
 async function expectVisibleButtonsActionable(page: Page) {
   const dialog = page.getByRole("dialog");
@@ -53,7 +56,7 @@ test("все видимые кнопки доступны для клика во
 });
 
 test("рабочие элементы управления дают наблюдаемый результат", async ({ page }) => {
-  const dish = { date: "2026-10-08", mealType: "dinner", title: "Тестовое карри", cookingMinutes: 25, difficulty: "easy", servings: 2, estimatedCostThb: 180, ingredients: [{ name: "Рис", quantity: 200, unit: "g", fromInventory: true }], instructions: ["Приготовить"], nutritionPerServing: { kcal: 450, proteinG: 20, fatG: 12, carbsG: 60, fiberG: 4 } };
+  const dish = { date: TODAY, mealType: "dinner", title: "Тестовое карри", cookingMinutes: 25, difficulty: "easy", servings: 2, estimatedCostThb: 180, ingredients: [{ name: "Рис", quantity: 200, unit: "g", fromInventory: true }], instructions: ["Приготовить"], nutritionPerServing: { kcal: 450, proteinG: 20, fatG: 12, carbsG: 60, fiberG: 4 } };
   const plan = { title: "Меню на сегодня", summary: { days: 1, servings: 2, estimatedTotalThb: 180, inventoryCoveragePercent: 100, budgetWarning: null }, dishes: [dish], missingProducts: [] };
   const request = { mode: "inventory", days: 1, servings: 2, cuisines: ["тайская"], mealTypes: ["dinner"], inventory: [] };
   await page.route("**/api/meal-plans", async (route) => {
@@ -182,7 +185,7 @@ test("сохранённое меню загружается, а недоста�
   const plan = {
     title: "Меню из магазина",
     summary: { days: 1, servings: 2, estimatedTotalThb: 300, inventoryCoveragePercent: 0, budgetWarning: null },
-    dishes: [{ date: "2026-10-08", mealType: "dinner", title: "Карри с рисом", cookingMinutes: 30, difficulty: "easy", servings: 2, estimatedCostThb: 300, ingredients: [{ name: "Рис", quantity: 200, unit: "g", fromInventory: false }], instructions: ["Приготовить"], nutritionPerServing: { kcal: 500, proteinG: 20, fatG: 15, carbsG: 70, fiberG: 4 } }],
+    dishes: [{ date: TODAY, mealType: "dinner", title: "Карри с рисом", cookingMinutes: 30, difficulty: "easy", servings: 2, estimatedCostThb: 300, ingredients: [{ name: "Рис", quantity: 200, unit: "g", fromInventory: false }], instructions: ["Приготовить"], nutritionPerServing: { kcal: 500, proteinG: 20, fatG: 15, carbsG: 70, fiberG: 4 } }],
     missingProducts: [{ name: "Рис", quantity: 200, unit: "g" }]
   };
   const request = { mode: "stores", days: 1, servings: 2, budgetThb: 1000, cuisines: ["тайская"], mealTypes: ["dinner"], inventory: [] };
@@ -209,7 +212,7 @@ test("главный экран показывает сегодняшнее бл
   const plan = {
     title: "Меню на сегодня",
     summary: { days: 1, servings: 2, estimatedTotalThb: 300, inventoryCoveragePercent: 0, budgetWarning: null },
-    dishes: [{ date: "2026-10-08", mealType: "dinner", title: "Карри с рисом", cookingMinutes: 30, difficulty: "easy", servings: 2, estimatedCostThb: 300, ingredients: [{ name: "Рис", quantity: 200, unit: "g", fromInventory: false }], instructions: ["Приготовить"], nutritionPerServing: { kcal: 500, proteinG: 20, fatG: 15, carbsG: 70, fiberG: 4 } }],
+    dishes: [{ date: TODAY, mealType: "dinner", title: "Карри с рисом", cookingMinutes: 30, difficulty: "easy", servings: 2, estimatedCostThb: 300, ingredients: [{ name: "Рис", quantity: 200, unit: "g", fromInventory: false }], instructions: ["Приготовить"], nutritionPerServing: { kcal: 500, proteinG: 20, fatG: 15, carbsG: 70, fiberG: 4 } }],
     missingProducts: [{ name: "Рис", quantity: 200, unit: "g" }]
   };
   const request = { mode: "stores", days: 1, servings: 2, budgetThb: 1000, cuisines: ["тайская"], mealTypes: ["dinner"], inventory: [] };
@@ -243,9 +246,9 @@ test("блок скоро использовать показывает толь
 test("слайдер начинает с первого неприготовленного блюда", async ({ page }) => {
   let completed: string[] = [];
   const dishes = [
-    { date: "2026-10-08", mealType: "breakfast", title: "Йогурт с фруктами", cookingMinutes: 5, difficulty: "easy", servings: 2, estimatedCostThb: 100, ingredients: [{ name: "Йогурт", quantity: 300, unit: "g", fromInventory: false }], instructions: ["Смешать"], nutritionPerServing: { kcal: 250, proteinG: 12, fatG: 8, carbsG: 32, fiberG: 3 } },
-    { date: "2026-10-08", mealType: "lunch", title: "Обеденный боул", cookingMinutes: 20, difficulty: "easy", servings: 2, estimatedCostThb: 200, ingredients: [{ name: "Рис", quantity: 200, unit: "g", fromInventory: false }], instructions: ["Приготовить"], nutritionPerServing: { kcal: 500, proteinG: 20, fatG: 12, carbsG: 70, fiberG: 5 } },
-    { date: "2026-10-08", mealType: "dinner", title: "Вечернее карри", cookingMinutes: 30, difficulty: "medium", servings: 2, estimatedCostThb: 250, ingredients: [{ name: "Овощи", quantity: 400, unit: "g", fromInventory: false }], instructions: ["Потушить"], nutritionPerServing: { kcal: 550, proteinG: 18, fatG: 20, carbsG: 65, fiberG: 8 } }
+    { date: TODAY, mealType: "breakfast", title: "Йогурт с фруктами", cookingMinutes: 5, difficulty: "easy", servings: 2, estimatedCostThb: 100, ingredients: [{ name: "Йогурт", quantity: 300, unit: "g", fromInventory: false }], instructions: ["Смешать"], nutritionPerServing: { kcal: 250, proteinG: 12, fatG: 8, carbsG: 32, fiberG: 3 } },
+    { date: TODAY, mealType: "lunch", title: "Обеденный боул", cookingMinutes: 20, difficulty: "easy", servings: 2, estimatedCostThb: 200, ingredients: [{ name: "Рис", quantity: 200, unit: "g", fromInventory: false }], instructions: ["Приготовить"], nutritionPerServing: { kcal: 500, proteinG: 20, fatG: 12, carbsG: 70, fiberG: 5 } },
+    { date: TODAY, mealType: "dinner", title: "Вечернее карри", cookingMinutes: 30, difficulty: "medium", servings: 2, estimatedCostThb: 250, ingredients: [{ name: "Овощи", quantity: 400, unit: "g", fromInventory: false }], instructions: ["Потушить"], nutritionPerServing: { kcal: 550, proteinG: 18, fatG: 20, carbsG: 65, fiberG: 8 } }
   ];
   const plan = { title: "Меню дня", summary: { days: 1, servings: 2, estimatedTotalThb: 550, inventoryCoveragePercent: 0, budgetWarning: null }, dishes, missingProducts: [] };
   const request = { mode: "stores", days: 1, servings: 2, budgetThb: 1000, cuisines: ["тайская"], mealTypes: ["breakfast", "lunch", "dinner"], inventory: [] };
@@ -284,7 +287,7 @@ test("сохранение нового меню из магазинов обн�
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "openai", plan: {
       title: "Новое меню",
       summary: { days: 1, servings: 2, estimatedTotalThb: 300, inventoryCoveragePercent: 0, budgetWarning: null },
-      dishes: [{ date: "2026-10-08", mealType: "dinner", title: "Карри с рисом", cookingMinutes: 30, difficulty: "easy", servings: 2, estimatedCostThb: 300, ingredients: [{ name: "Рис", quantity: 200, unit: "g", fromInventory: false }], instructions: ["Приготовить"], nutritionPerServing: { kcal: 500, proteinG: 20, fatG: 15, carbsG: 70, fiberG: 4 } }],
+      dishes: [{ date: TODAY, mealType: "dinner", title: "Карри с рисом", cookingMinutes: 30, difficulty: "easy", servings: 2, estimatedCostThb: 300, ingredients: [{ name: "Рис", quantity: 200, unit: "g", fromInventory: false }], instructions: ["Приготовить"], nutritionPerServing: { kcal: 500, proteinG: 20, fatG: 15, carbsG: 70, fiberG: 4 } }],
       missingProducts: [{ name: "Рис", quantity: 200, unit: "g" }]
     } }) });
   });
@@ -296,6 +299,34 @@ test("сохранение нового меню из магазинов обн�
   await expect(page.getByRole("status")).toContainText("1 покупок добавлено");
   await page.getByRole("button", { name: "Покупки", exact: true }).click();
   await expect(page.getByText("Рис", { exact: true })).toBeVisible();
+});
+
+test("завершённые покупки переходят в запасы", async ({ page }) => {
+  let shoppingItems = [{ id: "milk", name: "Молоко", detail: "2 × 1 л", price: 140, bought: false, store: "Tops" }];
+  await page.route("**/api/shopping", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", items: shoppingItems }) });
+      return;
+    }
+    if (route.request().method() === "PUT") {
+      shoppingItems = [];
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", completed: 1, added: 1, inventory: [{ id: "inventory-milk", name: "Молоко", quantity: 2000, unit: "мл", storage: "Кладовая", expiry: "срок не указан", icon: "🥬" }] }) });
+      return;
+    }
+    await route.continue();
+  });
+  await page.route("**/api/shopping/milk", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", bought: true }) });
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "Покупки", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Отметьте все товары купленными" })).toBeDisabled();
+  await page.getByText("Молоко", { exact: true }).click();
+  await page.getByRole("button", { name: "Завершить и добавить в запасы" }).click();
+  await expect(page.getByRole("status")).toContainText("1 товаров добавлено в запасы");
+  await page.getByRole("button", { name: "Запасы", exact: true }).click();
+  const milk = page.getByText("Молоко", { exact: true }).locator("xpath=ancestor::article");
+  await expect(milk).toContainText("2000 мл");
 });
 
 test("добавление продукта передаёт выбранные единицу и место хранения", async ({ page }) => {
