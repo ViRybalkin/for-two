@@ -1,13 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { parsePurchasedQuantity, shoppingItemInputSchema, shoppingItemPatchSchema } from "@/lib/services/shopping-repository";
+import { decodeShoppingMetadata, encodeShoppingMetadata, parsePurchasedQuantity, shoppingItemInputSchema, shoppingItemPatchSchema } from "@/lib/services/shopping-repository";
 
 describe("shopping persistence schemas", () => {
   it("accepts a complete shopping item", () => {
-    expect(shoppingItemInputSchema.safeParse({ name: "Рис", detail: "1 упаковка", price: 120, store: "Makro" }).success).toBe(true);
+    expect(shoppingItemInputSchema.safeParse({ name: "Рис", detail: "1 упаковка", price: 120, store: "Makro", url: "https://www.makro.pro/p/rice", imageUrl: "https://cdn.example.com/rice.jpg" }).success).toBe(true);
+  });
+
+  it("keeps product links in backward-compatible shopping metadata", () => {
+    const metadata = { detail: "2 × 1 л", url: "https://www.tops.co.th/milk", imageUrl: "https://cdn.example.com/milk.jpg" };
+    expect(decodeShoppingMetadata(encodeShoppingMetadata(metadata))).toEqual(metadata);
+    expect(decodeShoppingMetadata("200 g")).toEqual({ detail: "200 g", url: null, imageUrl: null });
   });
 
   it("rejects unknown stores and negative prices", () => {
     expect(shoppingItemInputSchema.safeParse({ name: "Рис", detail: "1 упаковка", price: -1, store: "Lotus" }).success).toBe(false);
+    expect(shoppingItemInputSchema.safeParse({ name: "Рис", detail: "1 упаковка", price: 120, store: "Makro", url: "javascript:alert(1)" }).success).toBe(false);
   });
 
   it("requires an explicit purchased state", () => {

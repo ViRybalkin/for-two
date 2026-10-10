@@ -34,6 +34,41 @@ function isOfficialUrl(value: string, store: "tops" | "makro") {
   }
 }
 
+function decodeHtmlAttribute(value: string) {
+  return value
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'");
+}
+
+export function extractProductImage(html: string, pageUrl: string) {
+  const metaTags = html.match(/<meta\b[^>]*>/gi) || [];
+  for (const tag of metaTags) {
+    if (!/(?:property|name)=["'](?:og:image|twitter:image(?::src)?)["']/i.test(tag)) continue;
+    const content = tag.match(/content=["']([^"']+)["']/i)?.[1];
+    if (!content) continue;
+    try {
+      const url = new URL(decodeHtmlAttribute(content), pageUrl);
+      if (url.protocol === "https:" || url.protocol === "http:") return url.href;
+    } catch { /* ignore malformed image metadata */ }
+  }
+  return null;
+}
+
+async function getProductImage(url: string) {
+  try {
+    const response = await fetch(url, {
+      cache: "no-store",
+      headers: { "user-agent": "Mozilla/5.0 (compatible; NaDvoih/1.0; product-preview)" },
+      signal: AbortSignal.timeout(4_000)
+    });
+    if (!response.ok) return null;
+    return extractProductImage(await response.text(), url);
+  } catch {
+    return null;
+  }
+}
+
 export async function searchOfficialCatalog(input: z.infer<typeof catalogSearchRequestSchema>) {
   const allowedDomains = input.store === "all"
     ? [...officialDomains.tops, ...officialDomains.makro]
@@ -63,7 +98,13 @@ export async function searchOfficialCatalog(input: z.infer<typeof catalogSearchR
   });
 
   if (!response.output_parsed) throw new Error("Catalog results were not returned");
-  return response.output_parsed.products
-    .filter((product) => isOfficialUrl(product.url, product.store))
-    .map((product) => ({ ...product, checkedAt: new Date().toISOString(), confidence: "estimated" as const }));
+  const products = response.output_parsed.products.filter((product) => isOfficialUrl(product.url, product.store));
+  const imageUrls = await Promise.all(products.map((product) => getProductImage(product.url)));
+  const checkedAt = new Date().toISOString();
+  return products.map((product, index) => ({
+    ...product,
+    imageUrl: imageUrls[index],
+    checkedAt,
+    confidence: "estimated" as const
+  }));
 }

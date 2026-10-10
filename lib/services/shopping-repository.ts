@@ -3,11 +3,15 @@ import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 import type { GeneratedMealPlan } from "@/lib/schemas/meal-plan";
 
+const optionalHttpUrl = z.string().url().refine((value) => /^https?:\/\//i.test(value), "Only HTTP links are supported").nullable().optional();
+
 export const shoppingItemInputSchema = z.object({
   name: z.string().trim().min(1).max(160),
   detail: z.string().trim().min(1).max(200),
   price: z.number().nonnegative().max(1_000_000),
-  store: z.enum(["Tops", "Makro"])
+  store: z.enum(["Tops", "Makro"]),
+  url: optionalHttpUrl,
+  imageUrl: optionalHttpUrl
 });
 
 export const shoppingItemPatchSchema = z.object({ bought: z.boolean() });
@@ -17,6 +21,32 @@ function localizeDetail(detail: string | null) {
     .replace(/\s+piece$/, " шт")
     .replace(/\s+ml$/, " мл")
     .replace(/\s+g$/, " г");
+}
+
+const shoppingMetadataPrefix = "na-dvoih:v1:";
+
+type ShoppingMetadata = { detail: string; url: string | null; imageUrl: string | null };
+
+function safeHttpUrl(value: unknown) {
+  return typeof value === "string" && /^https?:\/\//i.test(value) ? value : null;
+}
+
+export function encodeShoppingMetadata(metadata: ShoppingMetadata) {
+  return `${shoppingMetadataPrefix}${JSON.stringify(metadata)}`;
+}
+
+export function decodeShoppingMetadata(value: string | null): ShoppingMetadata {
+  if (!value?.startsWith(shoppingMetadataPrefix)) return { detail: value || "фасовка не указана", url: null, imageUrl: null };
+  try {
+    const parsed = JSON.parse(value.slice(shoppingMetadataPrefix.length)) as Partial<ShoppingMetadata>;
+    return {
+      detail: typeof parsed.detail === "string" && parsed.detail ? parsed.detail : "фасовка не указана",
+      url: safeHttpUrl(parsed.url),
+      imageUrl: safeHttpUrl(parsed.imageUrl)
+    };
+  } catch {
+    return { detail: "фасовка не указана", url: null, imageUrl: null };
+  }
 }
 
 const unitAliases = { g: "g", "г": "g", kg: "g", "кг": "g", ml: "ml", "мл": "ml", l: "ml", "л": "ml", piece: "piece", "шт": "piece" } as const;
@@ -72,13 +102,16 @@ export async function listShoppingItems() {
   if (itemError) throw itemError;
   return (items || []).map((item) => {
     const product = Array.isArray(item.products) ? item.products[0] : item.products;
+    const metadata = decodeShoppingMetadata(item.department);
     return {
       id: item.id,
       name: product?.display_name_ru || "Товар",
-      detail: localizeDetail(item.department),
+      detail: localizeDetail(metadata.detail),
       price: Number(item.estimated_price_thb || 0),
       bought: item.purchased,
-      store: storeByList.get(item.shopping_list_id) || "Tops"
+      store: storeByList.get(item.shopping_list_id) || "Tops",
+      url: metadata.url,
+      imageUrl: metadata.imageUrl
     };
   });
 }
@@ -89,7 +122,8 @@ export async function addShoppingItem(input: z.infer<typeof shoppingItemInputSch
   const normalizedName = input.name.trim().toLowerCase();
   const { data: product, error: productError } = await client.from("products").upsert({ normalized_name: normalizedName, display_name_ru: input.name.trim(), default_unit: "piece" }, { onConflict: "normalized_name,default_unit" }).select("id").single();
   if (productError) throw productError;
-  const { data, error } = await client.from("shopping_list_items").insert({ shopping_list_id: listId, product_id: product.id, planned_packages: 1, estimated_price_thb: input.price, purchased: false, department: input.detail }).select("id").single();
+  const metadata = encodeShoppingMetadata({ detail: input.detail, url: input.url || null, imageUrl: input.imageUrl || null });
+  const { data, error } = await client.from("shopping_list_items").insert({ shopping_list_id: listId, product_id: product.id, planned_packages: 1, estimated_price_thb: input.price, purchased: false, department: metadata }).select("id").single();
   if (error) throw error;
   return data.id as string;
 }
@@ -183,7 +217,8 @@ export async function completeShoppingLists() {
   for (const item of purchasedItems || []) {
     const product = Array.isArray(item.products) ? item.products[0] : item.products;
     if (!product?.display_name_ru || !product.default_unit) continue;
-    const parsed = parsePurchasedQuantity(item.department, Number(item.actual_packages || item.planned_packages || 1), product.default_unit as "g" | "ml" | "piece");
+    const metadata = decodeShoppingMetadata(item.department);
+    const parsed = parsePurchasedQuantity(metadata.detail, Number(item.actual_packages || item.planned_packages || 1), product.default_unit as "g" | "ml" | "piece");
     const { error: inventoryError } = await client.rpc("add_inventory_item", {
       p_display_name: product.display_name_ru,
       p_quantity: parsed.quantity,

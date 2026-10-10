@@ -321,12 +321,31 @@ test("завершённые покупки переходят в запасы",
   await page.reload();
   await page.getByRole("button", { name: "Покупки", exact: true }).click();
   await expect(page.getByRole("button", { name: "Отметьте все товары купленными" })).toBeDisabled();
-  await page.getByText("Молоко", { exact: true }).click();
+  await page.getByLabel("Отметить купленным: Молоко").click();
   await page.getByRole("button", { name: "Завершить и добавить в запасы" }).click();
   await expect(page.getByRole("status")).toContainText("1 товаров добавлено в запасы");
   await page.getByRole("button", { name: "Запасы", exact: true }).click();
   const milk = page.getByText("Молоко", { exact: true }).locator("xpath=ancestor::article");
   await expect(milk).toContainText("2000 мл");
+});
+
+test("товар из магазина показывает изображение и официальную ссылку", async ({ page }) => {
+  await page.route("**/api/shopping", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ source: "supabase", items: [{ id: "rice", name: "Jasmine Rice", detail: "1 кг", price: 89, bought: false, store: "Tops", url: "https://www.tops.co.th/en/jasmine-rice", imageUrl: "https://cdn.example.com/rice.jpg" }] })
+    });
+  });
+  await page.route("https://cdn.example.com/rice.jpg", async (route) => {
+    await route.fulfill({ status: 200, contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" />' });
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "Покупки", exact: true }).click();
+
+  const item = page.getByText("Jasmine Rice", { exact: true }).locator("xpath=ancestor::article");
+  await expect(item.locator(".shopping-image")).toHaveAttribute("src", "https://cdn.example.com/rice.jpg");
+  await expect(item.getByRole("link", { name: "Открыть на сайте Tops" })).toHaveAttribute("href", "https://www.tops.co.th/en/jasmine-rice");
 });
 
 test("добавление продукта передаёт выбранные единицу и место хранения", async ({ page }) => {
