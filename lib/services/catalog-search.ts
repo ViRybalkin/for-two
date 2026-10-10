@@ -91,6 +91,49 @@ function safeHttpUrl(value: string | null) {
   }
 }
 
+function normalizeComparableUrl(value: string) {
+  try {
+    const url = new URL(value);
+    url.hash = "";
+    url.search = "";
+    return url.href.replace(/\/$/, "");
+  } catch {
+    return value.replace(/\/$/, "");
+  }
+}
+
+export function extractSearchResultImages(output: unknown) {
+  const images = new Map<string, string>();
+  const visited = new WeakSet<object>();
+
+  function visit(value: unknown) {
+    if (!value || typeof value !== "object" || visited.has(value)) return;
+    visited.add(value);
+
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+
+    const record = value as Record<string, unknown>;
+    if (record.type === "image_result" && typeof record.source_website_url === "string") {
+      const imageUrl = safeHttpUrl(
+        typeof record.image_url === "string"
+          ? record.image_url
+          : typeof record.thumbnail_url === "string"
+            ? record.thumbnail_url
+            : null
+      );
+      if (imageUrl) images.set(normalizeComparableUrl(record.source_website_url), imageUrl);
+    }
+
+    Object.values(record).forEach(visit);
+  }
+
+  visit(output);
+  return images;
+}
+
 async function searchOfficialCatalogChunk(names: string[], store: "tops" | "makro") {
   const response = await getOpenAI().responses.parse({
     model: process.env.OPENAI_SEARCH_MODEL || process.env.OPENAI_TEXT_MODEL || "gpt-6-luna",
@@ -118,6 +161,7 @@ async function searchOfficialCatalogChunk(names: string[], store: "tops" | "makr
   });
 
   if (!response.output_parsed) return [];
+  const searchImages = extractSearchResultImages(response.output);
   const requested = new Set(names.map((name) => name.toLocaleLowerCase("ru")));
   const products = response.output_parsed.products.filter((product) =>
     product.store === store
@@ -127,7 +171,7 @@ async function searchOfficialCatalogChunk(names: string[], store: "tops" | "makr
   const pageImages = await Promise.all(products.map((product) => getProductImage(product.url)));
   return products.map((product, index) => ({
     ...product,
-    imageUrl: pageImages[index] || safeHttpUrl(product.imageUrl)
+    imageUrl: pageImages[index] || searchImages.get(normalizeComparableUrl(product.url)) || safeHttpUrl(product.imageUrl)
   }));
 }
 
