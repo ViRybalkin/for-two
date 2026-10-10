@@ -46,7 +46,9 @@ export const generatedMealPlanSchema = z.object({
       fatG: z.number().nonnegative(),
       carbsG: z.number().nonnegative(),
       fiberG: z.number().nonnegative()
-    })
+    }),
+    imageUrl: z.string().url().nullable().optional(),
+    imageStatus: z.enum(["pending", "processing", "completed", "failed"]).optional()
   })).min(1),
   missingProducts: z.array(z.object({
     name: z.string(),

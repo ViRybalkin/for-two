@@ -3,6 +3,7 @@ import { z } from "zod";
 import { generatedMealPlanSchema, mealPlanRequestSchema } from "@/lib/schemas/meal-plan";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 import { getMealDishKey, mealPlanCompletionSchema } from "@/lib/meal-plan-completion";
+import { attachSignedMealImages } from "@/lib/services/meal-image-service";
 
 export const saveMealPlanSchema = z.object({
   mode: z.enum(["inventory", "stores"]),
@@ -19,7 +20,7 @@ export async function saveMealPlan(input: z.infer<typeof saveMealPlanSchema>) {
   const { data, error } = await client.from("meal_plans").insert({
     household_id: household.id,
     mode: input.mode,
-    status: "draft",
+    status: "confirmed",
     date_from: dates[0],
     date_to: dates.at(-1),
     budget_thb: input.request.budgetThb || null,
@@ -32,7 +33,7 @@ export async function saveMealPlan(input: z.infer<typeof saveMealPlanSchema>) {
 export async function listMealPlans() {
   const { data, error } = await getSupabaseAdmin().from("meal_plans").select("id,status,mode,date_from,date_to,budget_thb,parameters,created_at").order("created_at", { ascending: false }).limit(20);
   if (error) throw error;
-  return (data || []).flatMap((row) => {
+  const parsedRows = (data || []).flatMap((row) => {
     const parameters = row.parameters && typeof row.parameters === "object" ? row.parameters as Record<string, unknown> : {};
     const parsed = saveMealPlanSchema.safeParse({ mode: row.mode, request: parameters.request, plan: parameters.plan });
     if (!parsed.success) return [];
@@ -46,9 +47,11 @@ export async function listMealPlans() {
       createdAt: row.created_at,
       request: parsed.data.request,
       plan: parsed.data.plan,
+      dishImages: parameters.dishImages,
       completed: Array.isArray(parameters.completed) ? parameters.completed.filter((value): value is string => typeof value === "string") : []
     }];
   });
+  return Promise.all(parsedRows.map(async ({ dishImages, ...row }) => ({ ...row, plan: await attachSignedMealImages(row.plan, dishImages) })));
 }
 
 export async function getMealPlan(id: string) {
@@ -56,7 +59,12 @@ export async function getMealPlan(id: string) {
   if (error) throw error;
   const parameters = data.parameters && typeof data.parameters === "object" ? data.parameters as Record<string, unknown> : {};
   const parsed = saveMealPlanSchema.parse({ mode: data.mode, request: parameters.request, plan: parameters.plan });
-  return { id: data.id as string, ...parsed, completed: Array.isArray(parameters.completed) ? parameters.completed.filter((value): value is string => typeof value === "string") : [] };
+  return {
+    id: data.id as string,
+    ...parsed,
+    plan: await attachSignedMealImages(parsed.plan, parameters.dishImages),
+    completed: Array.isArray(parameters.completed) ? parameters.completed.filter((value): value is string => typeof value === "string") : []
+  };
 }
 
 export async function setMealPlanDishCompleted(id: string, input: z.infer<typeof mealPlanCompletionSchema>) {

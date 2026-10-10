@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { A11y, Navigation, Pagination } from "swiper/modules";
 import { Swiper, SwiperSlide } from "swiper/react";
 import "swiper/css";
@@ -78,6 +77,7 @@ export function AppShell() {
   const [selectedDish, setSelectedDish] = useState<MealDish | null>(null);
   const [sheet, setSheet] = useState<"add" | "settings" | "recipe" | "catalog" | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const generatingImages = useRef(new Set<string>());
 
   useEffect(() => {
     const saved = window.localStorage.getItem("na-dvoih-state-v3");
@@ -117,6 +117,49 @@ export function AppShell() {
   useEffect(() => {
     if (localStateReady) window.localStorage.setItem("na-dvoih-state-v3", JSON.stringify({ inventory, shopping }));
   }, [inventory, shopping, localStateReady]);
+
+  useEffect(() => {
+    if (!savedPlan) return;
+    let cancelled = false;
+    const today = getBangkokDate();
+    const queue = [...savedPlan.plan.dishes]
+      .filter((dish) => !dish.imageUrl && dish.imageStatus !== "completed" && dish.imageStatus !== "failed")
+      .sort((left, right) => Number(right.date === today) - Number(left.date === today));
+
+    const updateDishImage = (target: MealDish, patch: Partial<MealDish>) => {
+      setSavedPlan((current) => current ? {
+        ...current,
+        plan: { ...current.plan, dishes: current.plan.dishes.map((dish) => getMealDishKey(dish.date, dish.mealType) === getMealDishKey(target.date, target.mealType) ? { ...dish, ...patch } : dish) }
+      } : current);
+      setSelectedDish((current) => current && getMealDishKey(current.date, current.mealType) === getMealDishKey(target.date, target.mealType) ? { ...current, ...patch } : current);
+    };
+
+    void (async () => {
+      for (const dish of queue) {
+        if (cancelled) return;
+        const key = `${savedPlan.id}:${getMealDishKey(dish.date, dish.mealType)}`;
+        if (generatingImages.current.has(key)) continue;
+        generatingImages.current.add(key);
+        updateDishImage(dish, { imageStatus: "processing" });
+        try {
+          const response = await fetch(`/api/meal-plans/${savedPlan.id}/images`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ date: dish.date, mealType: dish.mealType })
+          });
+          const data = await response.json();
+          if (!response.ok || !data.imageUrl) throw new Error(data?.error?.message || "Не удалось создать изображение");
+          if (!cancelled) updateDishImage(dish, { imageUrl: data.imageUrl, imageStatus: "completed" });
+        } catch {
+          if (!cancelled) updateDishImage(dish, { imageUrl: null, imageStatus: "failed" });
+        } finally {
+          generatingImages.current.delete(key);
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [savedPlan?.id]);
 
   const notify = (message: string) => {
     setToast(message);
@@ -252,10 +295,9 @@ function TodayScreen({ savedPlan, inventory, loading, onMenu, onInventory, onRec
       >
         {orderedDishes.map((slideDish) => {
           const completedSlide = completed.includes(getMealDishKey(slideDish.date, slideDish.mealType));
-          const specificPhoto = slideDish.title.toLowerCase().includes("пад крапао");
           return <SwiperSlide key={getMealDishKey(slideDish.date, slideDish.mealType)}>
             <article className="hero-card">
-              {specificPhoto ? <Image src="/pad-krapow.png" alt={slideDish.title} fill priority sizes="(max-width: 600px) 100vw, 560px" /> : <div className="meal-placeholder"><CookingPot size={74} /><span>Рецепт на сегодня</span></div>}
+              {slideDish.imageUrl ? <img className="meal-photo" src={slideDish.imageUrl} alt={slideDish.title} /> : <div className="meal-placeholder"><CookingPot size={74} /><span>{slideDish.imageStatus === "processing" ? "Создаём изображение блюда…" : "Рецепт на сегодня"}</span></div>}
               <div className="hero-shade" />
               <button className="hero-open" onClick={() => onRecipe(slideDish)} aria-label={`Открыть рецепт ${slideDish.title}`} />
               <div className="hero-top"><span className="meal-pill">{completedSlide ? "✓ Приготовлено" : `${mealNames[slideDish.mealType]} · сегодня`}</span></div>
@@ -678,8 +720,7 @@ function RecipeView({ dish, completed, onComplete, onClose }: { dish: MealDish; 
   const mealNames = { breakfast: "ЗАВТРАК", lunch: "ОБЕД", dinner: "УЖИН", snack: "ПЕРЕКУС" } as const;
   const difficultyNames = { easy: "Легко", medium: "Средне", hard: "Сложно" } as const;
   const unitNames = { g: "г", ml: "мл", piece: "шт" } as const;
-  const hasSpecificPhoto = dish.title.toLowerCase().includes("пад крапао");
-  return <div className="full-overlay" role="dialog" aria-modal="true" aria-label={`Рецепт ${dish.title}`}><article className="recipe-view"><div className="recipe-photo">{hasSpecificPhoto ? <Image src="/pad-krapow.png" alt={dish.title} fill sizes="(max-width: 600px) 100vw, 600px" /> : <div className="meal-placeholder recipe-placeholder"><CookingPot size={82} /><span>{dish.title}</span></div>}<button className="round-glass back" onClick={onClose} aria-label="Закрыть рецепт"><ChevronLeft /></button></div>
+  return <div className="full-overlay" role="dialog" aria-modal="true" aria-label={`Рецепт ${dish.title}`}><article className="recipe-view"><div className="recipe-photo">{dish.imageUrl ? <img className="meal-photo" src={dish.imageUrl} alt={dish.title} /> : <div className="meal-placeholder recipe-placeholder"><CookingPot size={82} /><span>{dish.imageStatus === "processing" ? "Создаём изображение…" : dish.title}</span></div>}<button className="round-glass back" onClick={onClose} aria-label="Закрыть рецепт"><ChevronLeft /></button></div>
       <div className="recipe-body"><p className="eyebrow">{mealNames[dish.mealType]} · {dish.date}</p><h1>{dish.title}</h1><p className="recipe-lead">Рецепт из сохранённого меню с точными ингредиентами и пошаговым приготовлением.</p><div className="recipe-facts"><span><Clock3 />{dish.cookingMinutes} мин</span><span><SlidersHorizontal />{difficultyNames[dish.difficulty]}</span><span><CircleDollarSign />≈ {Math.round(dish.estimatedCostThb / dish.servings)} ฿/порция</span></div>
       <div className="nutrition-row"><Metric value={`${Math.round(dish.nutritionPerServing.kcal)}`} label="ккал/порция" /><Metric value={`${Math.round(dish.nutritionPerServing.proteinG)} г`} label="белки" /><Metric value={`${Math.round(dish.nutritionPerServing.fatG)} г`} label="жиры" /><Metric value={`${Math.round(dish.nutritionPerServing.carbsG)} г`} label="углеводы" /></div>
       <div className="servings-control"><div><b>Порции</b><small>Ингредиенты пересчитаются</small></div><div><button onClick={() => setServings(Math.max(1, servings - 1))} aria-label="Уменьшить число порций"><Minus /></button><strong>{servings}</strong><button onClick={() => setServings(servings + 1)} aria-label="Увеличить число порций"><Plus /></button></div></div>
