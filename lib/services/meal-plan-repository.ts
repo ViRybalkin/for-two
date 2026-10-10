@@ -1,6 +1,6 @@
 import "server-only";
 import { z } from "zod";
-import { generatedMealPlanSchema, mealPlanRequestSchema } from "@/lib/schemas/meal-plan";
+import { mealPlanRequestSchema, persistedMealPlanSchema } from "@/lib/schemas/meal-plan";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 import { getMealDishKey, mealPlanCompletionSchema } from "@/lib/meal-plan-completion";
 import { attachSignedMealImages } from "@/lib/services/meal-image-service";
@@ -8,7 +8,7 @@ import { attachSignedMealImages } from "@/lib/services/meal-image-service";
 export const saveMealPlanSchema = z.object({
   mode: z.enum(["inventory", "stores"]),
   request: mealPlanRequestSchema,
-  plan: generatedMealPlanSchema
+  plan: persistedMealPlanSchema
 });
 
 export async function saveMealPlan(input: z.infer<typeof saveMealPlanSchema>) {

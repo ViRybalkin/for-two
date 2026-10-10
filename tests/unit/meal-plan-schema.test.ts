@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { generatedMealPlanSchema, mealPlanRequestSchema, mealPlanRevisionRequestSchema } from "@/lib/schemas/meal-plan";
+import { zodTextFormat } from "openai/helpers/zod";
+import { generatedMealPlanSchema, mealPlanRequestSchema, mealPlanRevisionRequestSchema, persistedMealPlanSchema } from "@/lib/schemas/meal-plan";
 
 describe("mealPlanRequestSchema", () => {
   it("accepts a complete inventory request", () => {
@@ -47,6 +48,25 @@ describe("generatedMealPlanSchema", () => {
 
   it("accepts a strict generated plan", () => {
     expect(generatedMealPlanSchema.safeParse(validPlan).success).toBe(true);
+  });
+
+  it("keeps image metadata out of the OpenAI response schema", () => {
+    const withImage = {
+      ...validPlan,
+      dishes: [{ ...validPlan.dishes[0], imageUrl: "https://example.com/dish.webp", imageStatus: "completed" }]
+    };
+    const generated = generatedMealPlanSchema.parse(withImage);
+    expect(generated.dishes[0]).not.toHaveProperty("imageUrl");
+    expect(generated.dishes[0]).not.toHaveProperty("imageStatus");
+    expect(persistedMealPlanSchema.safeParse(withImage).success).toBe(true);
+  });
+
+  it("marks every OpenAI response field as required", () => {
+    const format = zodTextFormat(generatedMealPlanSchema, "meal_plan") as unknown as {
+      schema: { properties: { dishes: { items: { properties: Record<string, unknown>; required: string[] } } } };
+    };
+    const dishSchema = format.schema.properties.dishes.items;
+    expect(dishSchema.required.sort()).toEqual(Object.keys(dishSchema.properties).sort());
   });
 
   it("rejects negative nutrition and empty instructions", () => {

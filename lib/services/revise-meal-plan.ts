@@ -4,6 +4,7 @@ import { getOpenAI } from "@/lib/openai";
 import { generatedMealPlanSchema, type MealPlanRevisionRequest } from "@/lib/schemas/meal-plan";
 
 export async function reviseMealPlan(input: MealPlanRevisionRequest) {
+  const currentPlan = generatedMealPlanSchema.parse(input.plan);
   const response = await getOpenAI().responses.parse({
     model: process.env.OPENAI_TEXT_MODEL || "gpt-6-luna",
     store: false,
@@ -23,7 +24,7 @@ export async function reviseMealPlan(input: MealPlanRevisionRequest) {
       },
       {
         role: "user",
-        content: JSON.stringify({ instruction: input.instruction, originalRequest: input.request, currentPlan: input.plan })
+        content: JSON.stringify({ instruction: input.instruction, originalRequest: input.request, currentPlan })
       }
     ],
     text: { format: zodTextFormat(generatedMealPlanSchema, "revised_meal_plan") }

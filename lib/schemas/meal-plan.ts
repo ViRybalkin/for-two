@@ -16,6 +16,30 @@ export const mealPlanRequestSchema = z.object({
   wish: z.string().max(500).optional()
 });
 
+const generatedMealDishSchema = z.object({
+  date: z.string().date(),
+  mealType: z.enum(["breakfast", "lunch", "dinner", "snack"]),
+  title: z.string(),
+  cookingMinutes: z.number().int().positive(),
+  difficulty: z.enum(["easy", "medium", "hard"]),
+  servings: z.number().int().positive(),
+  estimatedCostThb: z.number().nonnegative(),
+  ingredients: z.array(z.object({
+    name: z.string(),
+    quantity: z.number().positive(),
+    unit: z.enum(["g", "ml", "piece"]),
+    fromInventory: z.boolean()
+  })),
+  instructions: z.array(z.string()).min(1).max(5),
+  nutritionPerServing: z.object({
+    kcal: z.number().nonnegative(),
+    proteinG: z.number().nonnegative(),
+    fatG: z.number().nonnegative(),
+    carbsG: z.number().nonnegative(),
+    fiberG: z.number().nonnegative()
+  })
+});
+
 export const generatedMealPlanSchema = z.object({
   title: z.string(),
   summary: z.object({
@@ -25,31 +49,7 @@ export const generatedMealPlanSchema = z.object({
     inventoryCoveragePercent: z.number().min(0).max(100),
     budgetWarning: z.string().nullable()
   }),
-  dishes: z.array(z.object({
-    date: z.string().date(),
-    mealType: z.enum(["breakfast", "lunch", "dinner", "snack"]),
-    title: z.string(),
-    cookingMinutes: z.number().int().positive(),
-    difficulty: z.enum(["easy", "medium", "hard"]),
-    servings: z.number().int().positive(),
-    estimatedCostThb: z.number().nonnegative(),
-    ingredients: z.array(z.object({
-      name: z.string(),
-      quantity: z.number().positive(),
-      unit: z.enum(["g", "ml", "piece"]),
-      fromInventory: z.boolean()
-    })),
-    instructions: z.array(z.string()).min(1).max(5),
-    nutritionPerServing: z.object({
-      kcal: z.number().nonnegative(),
-      proteinG: z.number().nonnegative(),
-      fatG: z.number().nonnegative(),
-      carbsG: z.number().nonnegative(),
-      fiberG: z.number().nonnegative()
-    }),
-    imageUrl: z.string().url().nullable().optional(),
-    imageStatus: z.enum(["pending", "processing", "completed", "failed"]).optional()
-  })).min(1),
+  dishes: z.array(generatedMealDishSchema).min(1),
   missingProducts: z.array(z.object({
     name: z.string(),
     quantity: z.number().positive(),
@@ -57,12 +57,19 @@ export const generatedMealPlanSchema = z.object({
   }))
 });
 
+export const persistedMealPlanSchema = generatedMealPlanSchema.extend({
+  dishes: z.array(generatedMealDishSchema.extend({
+    imageUrl: z.string().url().nullable().optional(),
+    imageStatus: z.enum(["pending", "processing", "completed", "failed"]).optional()
+  })).min(1)
+});
+
 export const mealPlanRevisionRequestSchema = z.object({
   instruction: z.string().trim().min(2).max(1000),
   request: mealPlanRequestSchema,
-  plan: generatedMealPlanSchema
+  plan: persistedMealPlanSchema
 });
 
 export type MealPlanRequest = z.infer<typeof mealPlanRequestSchema>;
-export type GeneratedMealPlan = z.infer<typeof generatedMealPlanSchema>;
+export type GeneratedMealPlan = z.infer<typeof persistedMealPlanSchema>;
 export type MealPlanRevisionRequest = z.infer<typeof mealPlanRevisionRequestSchema>;
