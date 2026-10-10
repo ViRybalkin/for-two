@@ -2,6 +2,7 @@ import "server-only";
 import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 import type { GeneratedMealPlan } from "@/lib/schemas/meal-plan";
+import { getOfficialStoreSearchUrl, searchOfficialCatalogBatch } from "@/lib/services/catalog-search";
 
 const optionalHttpUrl = z.string().url().refine((value) => /^https?:\/\//i.test(value), "Only HTTP links are supported").nullable().optional();
 
@@ -155,9 +156,8 @@ export async function createShoppingItemsForMealPlan(mealPlanId: string, plan: G
   if (findError) throw findError;
   let listId = existingList?.id as string | undefined;
   if (listId) {
-    const { data: existingItem, error: existingItemError } = await client.from("shopping_list_items").select("id").eq("shopping_list_id", listId).limit(1).maybeSingle();
-    if (existingItemError) throw existingItemError;
-    if (existingItem) return listShoppingItems();
+    const { error: clearError } = await client.from("shopping_list_items").delete().eq("shopping_list_id", listId);
+    if (clearError) throw clearError;
   } else {
     const { data: list, error: listError } = await client
       .from("shopping_lists")
@@ -176,6 +176,13 @@ export async function createShoppingItemsForMealPlan(mealPlanId: string, plan: G
     combined.set(key, current ? { ...current, quantity: current.quantity + item.quantity } : { name: item.name.trim(), normalizedName, quantity: item.quantity, unit: item.unit });
   }
   const productsToSave = [...combined.values()];
+  let catalogMatches: Awaited<ReturnType<typeof searchOfficialCatalogBatch>> = [];
+  try {
+    catalogMatches = await searchOfficialCatalogBatch(productsToSave.map((item) => item.name), "tops");
+  } catch (error) {
+    console.error("Catalog batch enrichment failed", error);
+  }
+  const catalogByName = new Map(catalogMatches.map((product) => [product.queryName.trim().toLocaleLowerCase("ru"), product]));
   const { data: products, error: productError } = await client
     .from("products")
     .upsert(productsToSave.map((item) => ({ normalized_name: item.normalizedName, display_name_ru: item.name, default_unit: item.unit })), { onConflict: "normalized_name,default_unit" })
@@ -187,13 +194,18 @@ export async function createShoppingItemsForMealPlan(mealPlanId: string, plan: G
   const shoppingItems = productsToSave.map((item) => {
     const productId = productByKey.get(`${item.normalizedName}:${item.unit}`);
     if (!productId) throw new Error(`Product was not persisted: ${item.normalizedName}`);
+    const catalog = catalogByName.get(item.name.toLocaleLowerCase("ru"));
     return {
       shopping_list_id: listId,
       product_id: productId,
       planned_packages: 1,
       estimated_price_thb: estimatedPrice,
       purchased: false,
-      department: `${item.quantity} ${item.unit}`
+      department: encodeShoppingMetadata({
+        detail: `${item.quantity} ${item.unit}`,
+        url: catalog?.url || getOfficialStoreSearchUrl(item.name, "tops"),
+        imageUrl: catalog?.imageUrl || null
+      })
     };
   });
   const { error: itemError } = await client.from("shopping_list_items").insert(shoppingItems);

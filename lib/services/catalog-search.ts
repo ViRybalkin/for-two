@@ -20,6 +20,18 @@ const catalogSearchResultSchema = z.object({
   })).max(12)
 });
 
+const catalogBatchResultSchema = z.object({
+  products: z.array(z.object({
+    queryName: z.string(),
+    store: z.enum(["tops", "makro"]),
+    originalName: z.string(),
+    packageText: z.string().nullable(),
+    priceThb: z.number().nonnegative().nullable(),
+    url: z.string(),
+    imageUrl: z.string().nullable()
+  })).max(50)
+});
+
 const officialDomains = {
   tops: ["tops.co.th"],
   makro: ["makro.pro"]
@@ -67,6 +79,64 @@ async function getProductImage(url: string) {
   } catch {
     return null;
   }
+}
+
+function safeHttpUrl(value: string | null) {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+export function getOfficialStoreSearchUrl(name: string, store: "tops" | "makro") {
+  const query = encodeURIComponent(name.trim());
+  return store === "tops"
+    ? `https://www.tops.co.th/en/search?q=${query}`
+    : `https://www.makro.pro/en/c/search?q=${query}`;
+}
+
+export async function searchOfficialCatalogBatch(names: string[], store: "tops" | "makro" = "tops") {
+  const uniqueNames = [...new Set(names.map((name) => name.trim()).filter(Boolean))].slice(0, 50);
+  if (!uniqueNames.length) return [];
+
+  const response = await getOpenAI().responses.parse({
+    model: process.env.OPENAI_SEARCH_MODEL || process.env.OPENAI_TEXT_MODEL || "gpt-6-luna",
+    store: false,
+    tools: [{
+      type: "web_search",
+      search_context_size: "low",
+      filters: { allowed_domains: [...officialDomains[store]] }
+    }],
+    tool_choice: "required",
+    include: ["web_search_call.action.sources"],
+    input: [
+      {
+        role: "system",
+        content: "Сопоставь продукты с конкретными товарными страницами официального магазина. Для каждого queryName верни максимум одну уверенно подходящую карточку. Не выдумывай URL, цену, фасовку или изображение. Если точной карточки нет, не добавляй этот продукт. imageUrl указывай только если прямая ссылка на изображение явно доступна на странице."
+      },
+      {
+        role: "user",
+        content: `Магазин: ${store}. Найди товары для списка: ${JSON.stringify(uniqueNames)}`
+      }
+    ],
+    text: { format: zodTextFormat(catalogBatchResultSchema, "catalog_batch_search") }
+  });
+
+  if (!response.output_parsed) return [];
+  const requested = new Set(uniqueNames.map((name) => name.toLocaleLowerCase("ru")));
+  const products = response.output_parsed.products.filter((product) =>
+    product.store === store
+    && requested.has(product.queryName.trim().toLocaleLowerCase("ru"))
+    && isOfficialUrl(product.url, store)
+  );
+  const pageImages = await Promise.all(products.map((product) => getProductImage(product.url)));
+  return products.map((product, index) => ({
+    ...product,
+    imageUrl: pageImages[index] || safeHttpUrl(product.imageUrl)
+  }));
 }
 
 export async function searchOfficialCatalog(input: z.infer<typeof catalogSearchRequestSchema>) {
