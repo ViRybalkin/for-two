@@ -2,7 +2,7 @@ import "server-only";
 import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 import type { GeneratedMealPlan } from "@/lib/schemas/meal-plan";
-import { getOfficialStoreSearchUrl, searchOfficialCatalogBatch } from "@/lib/services/catalog-search";
+import { searchOfficialCatalogBatch } from "@/lib/services/catalog-search";
 
 const optionalHttpUrl = z.string().url().refine((value) => /^https?:\/\//i.test(value), "Only HTTP links are supported").nullable().optional();
 
@@ -203,7 +203,7 @@ export async function createShoppingItemsForMealPlan(mealPlanId: string, plan: G
       purchased: false,
       department: encodeShoppingMetadata({
         detail: `${item.quantity} ${item.unit}`,
-        url: catalog?.url || getOfficialStoreSearchUrl(item.name, "tops"),
+        url: catalog?.url || null,
         imageUrl: catalog?.imageUrl || null
       })
     };

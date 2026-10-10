@@ -91,17 +91,7 @@ function safeHttpUrl(value: string | null) {
   }
 }
 
-export function getOfficialStoreSearchUrl(name: string, store: "tops" | "makro") {
-  const query = encodeURIComponent(name.trim());
-  return store === "tops"
-    ? `https://www.tops.co.th/en/search?q=${query}`
-    : `https://www.makro.pro/en/c/search?q=${query}`;
-}
-
-export async function searchOfficialCatalogBatch(names: string[], store: "tops" | "makro" = "tops") {
-  const uniqueNames = [...new Set(names.map((name) => name.trim()).filter(Boolean))].slice(0, 50);
-  if (!uniqueNames.length) return [];
-
+async function searchOfficialCatalogChunk(names: string[], store: "tops" | "makro") {
   const response = await getOpenAI().responses.parse({
     model: process.env.OPENAI_SEARCH_MODEL || process.env.OPENAI_TEXT_MODEL || "gpt-6-luna",
     store: false,
@@ -110,25 +100,25 @@ export async function searchOfficialCatalogBatch(names: string[], store: "tops" 
       search_context_size: "low",
       filters: { allowed_domains: [...officialDomains[store]] },
       search_content_types: ["image", "text"],
-      image_settings: { max_results: Math.min(50, Math.max(1, uniqueNames.length)), caption: true }
+      image_settings: { max_results: Math.max(1, names.length), caption: true }
     } as never],
     tool_choice: "required",
     include: ["web_search_call.results"],
     input: [
       {
         role: "system",
-        content: "Сопоставь продукты с конкретными товарными страницами официального магазина. Для каждого queryName верни максимум одну уверенно подходящую карточку. Используй результаты поиска изображений, когда они относятся к найденной карточке товара. Не выдумывай URL, цену, фасовку или изображение. Если точной карточки нет, не добавляй этот продукт. imageUrl указывай только из image_result, связанного с официальной страницей товара."
+        content: "Сопоставь каждый продукт с конкретной товарной страницей официального магазина. Русские названия сначала переведи на английский или тайский для поиска, но в queryName верни исходную строку без изменений. Для каждого queryName верни максимум одну уверенно подходящую карточку. Используй результаты поиска изображений, когда они относятся к найденной карточке товара. Не выдумывай URL, цену, фасовку или изображение. Если точной карточки нет, не добавляй этот продукт. imageUrl указывай только из image_result, связанного с официальной страницей товара."
       },
       {
         role: "user",
-        content: `Магазин: ${store}. Найди товары для списка: ${JSON.stringify(uniqueNames)}`
+        content: `Магазин: ${store}. Найди по одной подходящей карточке для каждого продукта: ${JSON.stringify(names)}`
       }
     ],
     text: { format: zodTextFormat(catalogBatchResultSchema, "catalog_batch_search") }
   });
 
   if (!response.output_parsed) return [];
-  const requested = new Set(uniqueNames.map((name) => name.toLocaleLowerCase("ru")));
+  const requested = new Set(names.map((name) => name.toLocaleLowerCase("ru")));
   const products = response.output_parsed.products.filter((product) =>
     product.store === store
     && requested.has(product.queryName.trim().toLocaleLowerCase("ru"))
@@ -139,6 +129,14 @@ export async function searchOfficialCatalogBatch(names: string[], store: "tops" 
     ...product,
     imageUrl: pageImages[index] || safeHttpUrl(product.imageUrl)
   }));
+}
+
+export async function searchOfficialCatalogBatch(names: string[], store: "tops" | "makro" = "tops") {
+  const uniqueNames = [...new Set(names.map((name) => name.trim()).filter(Boolean))].slice(0, 50);
+  const chunks: string[][] = [];
+  for (let index = 0; index < uniqueNames.length; index += 6) chunks.push(uniqueNames.slice(index, index + 6));
+  const results = await Promise.allSettled(chunks.map((chunk) => searchOfficialCatalogChunk(chunk, store)));
+  return results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
 }
 
 export async function searchOfficialCatalog(input: z.infer<typeof catalogSearchRequestSchema>) {
