@@ -108,14 +108,16 @@ export async function searchOfficialCatalogBatch(names: string[], store: "tops" 
     tools: [{
       type: "web_search",
       search_context_size: "low",
-      filters: { allowed_domains: [...officialDomains[store]] }
-    }],
+      filters: { allowed_domains: [...officialDomains[store]] },
+      search_content_types: ["image", "text"],
+      image_settings: { max_results: Math.min(50, Math.max(1, uniqueNames.length)), caption: true }
+    } as never],
     tool_choice: "required",
-    include: ["web_search_call.action.sources"],
+    include: ["web_search_call.results"],
     input: [
       {
         role: "system",
-        content: "Сопоставь продукты с конкретными товарными страницами официального магазина. Для каждого queryName верни максимум одну уверенно подходящую карточку. Не выдумывай URL, цену, фасовку или изображение. Если точной карточки нет, не добавляй этот продукт. imageUrl указывай только если прямая ссылка на изображение явно доступна на странице."
+        content: "Сопоставь продукты с конкретными товарными страницами официального магазина. Для каждого queryName верни максимум одну уверенно подходящую карточку. Используй результаты поиска изображений, когда они относятся к найденной карточке товара. Не выдумывай URL, цену, фасовку или изображение. Если точной карточки нет, не добавляй этот продукт. imageUrl указывай только из image_result, связанного с официальной страницей товара."
       },
       {
         role: "user",
