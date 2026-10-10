@@ -3,6 +3,7 @@ import { zodTextFormat } from "openai/helpers/zod";
 import { getOpenAI } from "@/lib/openai";
 import { generatedMealPlanSchema, type MealPlanRevisionRequest } from "@/lib/schemas/meal-plan";
 import { MEAL_PLAN_AI_REQUEST_OPTIONS } from "@/lib/meal-plan-ai-request";
+import { reconcileMealPlanWithInventory } from "@/lib/meal-plan-inventory";
 
 export async function reviseMealPlan(input: MealPlanRevisionRequest) {
   const currentPlan = generatedMealPlanSchema.parse(input.plan);
@@ -20,6 +21,7 @@ export async function reviseMealPlan(input: MealPlanRevisionRequest) {
           "Не добавляй обратно явно удалённые пользователем блюда или ингредиенты.",
           "Сохраняй даты и типы приёмов пищи, если пользователь прямо не попросил изменить их.",
           "Пиши по-русски. Ингредиенты должны иметь положительное количество и единицы g, ml или piece.",
+          "Учитывай inventory из originalRequest: используй точные названия домашних продуктов, а в missingProducts оставляй только недостающее количество.",
           "Для изменённого рецепта возвращай 4–5 достаточно подробных последовательных шагов приготовления."
         ].join("\n")
       },
@@ -32,5 +34,5 @@ export async function reviseMealPlan(input: MealPlanRevisionRequest) {
   }, MEAL_PLAN_AI_REQUEST_OPTIONS);
 
   if (!response.output_parsed) throw new Error("Revised meal plan was not returned");
-  return { plan: response.output_parsed, usage: response.usage, model: response.model };
+  return { plan: reconcileMealPlanWithInventory(response.output_parsed, input.request.inventory), usage: response.usage, model: response.model };
 }

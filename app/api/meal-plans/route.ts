@@ -3,6 +3,7 @@ import { isSupabaseConfigured } from "@/lib/services/inventory-repository";
 import { listMealPlans, saveMealPlan, saveMealPlanSchema } from "@/lib/services/meal-plan-repository";
 import { createShoppingItemsForMealPlan } from "@/lib/services/shopping-repository";
 import { configurationError, isDemoMode } from "@/lib/runtime-mode";
+import { reconcileMealPlanWithInventory } from "@/lib/meal-plan-inventory";
 
 export const maxDuration = 60;
 
@@ -21,8 +22,11 @@ export async function POST(request: Request) {
   if (!parsed.success) return NextResponse.json({ error: { code: "VALIDATION_ERROR", message: "Некорректное меню" } }, { status: 400 });
   if (!isSupabaseConfigured()) return isDemoMode() ? NextResponse.json({ source: "demo", id: crypto.randomUUID() }, { status: 201 }) : NextResponse.json(configurationError, { status: 503 });
   try {
-    const id = await saveMealPlan(parsed.data);
-    const shoppingItems = parsed.data.mode === "stores" ? await createShoppingItemsForMealPlan(id, parsed.data.plan) : [];
+    const input = parsed.data.mode === "stores"
+      ? { ...parsed.data, plan: reconcileMealPlanWithInventory(parsed.data.plan, parsed.data.request.inventory) }
+      : parsed.data;
+    const id = await saveMealPlan(input);
+    const shoppingItems = input.mode === "stores" ? await createShoppingItemsForMealPlan(id, input.plan) : [];
     return NextResponse.json({ source: "supabase", id, shoppingItems }, { status: 201 });
   } catch (error) {
     console.error("Meal plan save failed", error);
