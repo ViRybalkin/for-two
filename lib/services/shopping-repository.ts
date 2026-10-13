@@ -15,7 +15,18 @@ export const shoppingItemInputSchema = z.object({
   imageUrl: optionalHttpUrl
 });
 
-export const shoppingItemPatchSchema = z.object({ bought: z.boolean() });
+export const shoppingItemPatchSchema = z.object({
+  bought: z.boolean().optional(),
+  purchasedQuantity: z.number().positive().max(1_000_000).optional(),
+  purchasedUnit: z.enum(["g", "ml", "piece"]).optional()
+}).superRefine((value, context) => {
+  if (value.bought === undefined && value.purchasedQuantity === undefined) {
+    context.addIssue({ code: "custom", message: "Provide a purchased state or quantity" });
+  }
+  if ((value.purchasedQuantity === undefined) !== (value.purchasedUnit === undefined)) {
+    context.addIssue({ code: "custom", message: "Quantity and unit must be provided together" });
+  }
+});
 
 function localizeDetail(detail: string | null) {
   return (detail || "фасовка не указана")
@@ -144,11 +155,14 @@ export async function listShoppingItems() {
     const store = Array.isArray(list.stores) ? list.stores[0] : list.stores;
     return [list.id, store?.code === "makro" ? "Makro" : "Tops"] as const;
   }));
-  const { data: items, error: itemError } = await client.from("shopping_list_items").select("id,shopping_list_id,estimated_price_thb,purchased,department,products(display_name_ru)").in("shopping_list_id", lists.map((list) => list.id)).order("id");
+  const { data: items, error: itemError } = await client.from("shopping_list_items").select("id,shopping_list_id,estimated_price_thb,purchased,planned_packages,actual_packages,department,products(display_name_ru,default_unit)").in("shopping_list_id", lists.map((list) => list.id)).order("id");
   if (itemError) throw itemError;
   return (items || []).map((item) => {
     const product = Array.isArray(item.products) ? item.products[0] : item.products;
     const metadata = decodeShoppingMetadata(item.department);
+    const purchased = metadata.purchasedQuantity && metadata.purchasedUnit
+      ? { quantity: metadata.purchasedQuantity, unit: metadata.purchasedUnit }
+      : parsePurchasedQuantity(metadata.detail, Number(item.actual_packages || item.planned_packages || 1), (product?.default_unit || "piece") as BaseUnit);
     return {
       id: item.id,
       name: product?.display_name_ru || "Товар",
@@ -159,7 +173,9 @@ export async function listShoppingItems() {
       bought: item.purchased,
       store: storeByList.get(item.shopping_list_id) || "Makro",
       url: metadata.url,
-      imageUrl: metadata.imageUrl
+      imageUrl: metadata.imageUrl,
+      purchasedQuantity: purchased.quantity,
+      purchasedUnit: purchased.unit
     };
   });
 }
@@ -276,10 +292,23 @@ export async function createShoppingItemsForMealPlan(mealPlanId: string, plan: G
   return listShoppingItems();
 }
 
-export async function updateShoppingItem(id: string, bought: boolean) {
-  const { data, error } = await getSupabaseAdmin().from("shopping_list_items").update({ purchased: bought }).eq("id", id).select("purchased").single();
+export async function updateShoppingItem(id: string, input: z.infer<typeof shoppingItemPatchSchema>) {
+  const client = getSupabaseAdmin();
+  const { data: current, error: loadError } = await client.from("shopping_list_items").select("department").eq("id", id).single();
+  if (loadError) throw loadError;
+  const update: { purchased?: boolean; department?: string } = {};
+  if (input.bought !== undefined) update.purchased = input.bought;
+  if (input.purchasedQuantity !== undefined && input.purchasedUnit !== undefined) {
+    update.department = encodeShoppingMetadata({
+      ...decodeShoppingMetadata(current.department),
+      purchasedQuantity: input.purchasedQuantity,
+      purchasedUnit: input.purchasedUnit
+    });
+  }
+  const { data, error } = await client.from("shopping_list_items").update(update).eq("id", id).select("purchased,department").single();
   if (error) throw error;
-  return data.purchased as boolean;
+  const metadata = decodeShoppingMetadata(data.department);
+  return { bought: data.purchased as boolean, purchasedQuantity: metadata.purchasedQuantity, purchasedUnit: metadata.purchasedUnit };
 }
 
 export async function deleteShoppingItem(id: string) {

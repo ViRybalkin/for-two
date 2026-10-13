@@ -26,6 +26,7 @@ import {
   ShoppingBasket,
   SlidersHorizontal,
   Sparkles,
+  Trash2,
   Utensils,
   WalletCards,
   X
@@ -48,7 +49,8 @@ type InventoryItem = {
   icon: string;
 };
 type NewInventoryItem = InventoryItem & { expiryDate: string | null };
-type ShoppingItem = { id: string; name: string; detail: string; price: number; bought: boolean; store: "Tops" | "Makro"; url?: string | null; imageUrl?: string | null };
+type ShoppingUnit = "g" | "ml" | "piece";
+type ShoppingItem = { id: string; name: string; detail: string; price: number; bought: boolean; store: "Tops" | "Makro"; url?: string | null; imageUrl?: string | null; purchasedQuantity?: number; purchasedUnit?: ShoppingUnit };
 type CatalogProduct = { store: "tops" | "makro"; originalName: string; packageText: string | null; priceThb: number | null; url: string; imageUrl: string | null; availability: string; checkedAt: string };
 type MealDish = GeneratedMealPlan["dishes"][number];
 type SavedMealPlan = { id: string; mode: "inventory" | "stores"; request: MealPlanRequest; plan: GeneratedMealPlan; completed: string[] };
@@ -550,6 +552,39 @@ function ShoppingScreen({ items, loading, savedPlan, setItems, setInventory, not
       setPendingId(null);
     }
   };
+  const updatePurchasedQuantity = async (id: string, purchasedQuantity: number, purchasedUnit: ShoppingUnit) => {
+    if (!Number.isFinite(purchasedQuantity) || purchasedQuantity <= 0) return notify("Укажите количество больше нуля");
+    setPendingId(id);
+    try {
+      const response = await fetch(`/api/shopping/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ purchasedQuantity, purchasedUnit }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error?.message || "Не удалось сохранить количество");
+      setItems((old) => old.map((entry) => entry.id === id ? { ...entry, purchasedQuantity, purchasedUnit } : entry));
+      notify("Фактическое количество сохранено");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Не удалось сохранить количество");
+    } finally {
+      setPendingId(null);
+    }
+  };
+  const remove = async (id: string) => {
+    const item = items.find((entry) => entry.id === id);
+    if (!item) return;
+    setPendingId(id);
+    try {
+      const response = await fetch(`/api/shopping/${id}`, { method: "DELETE" });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error?.message || "Не удалось удалить товар");
+      }
+      setItems((old) => old.filter((entry) => entry.id !== id));
+      notify(`${item.name} удалён из покупок`);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Не удалось удалить товар");
+    } finally {
+      setPendingId(null);
+    }
+  };
   const complete = async () => {
     setCompleting(true);
     try {
@@ -585,12 +620,28 @@ function ShoppingScreen({ items, loading, savedPlan, setItems, setInventory, not
       <BrandHeader title="Покупки" subtitle={`${items.length} ${items.length % 10 === 1 && items.length % 100 !== 11 ? "товар" : items.length % 10 >= 2 && items.length % 10 <= 4 && (items.length % 100 < 12 || items.length % 100 > 14) ? "товара" : "товаров"} в активном списке`} action={<button className="icon-button" onClick={onSearch} aria-label="Найти товар в магазинах"><Plus /></button>} />
       <div className="store-tabs"><button className="active makro" type="button"><span>M</span><b>Makro</b><small>{visible.length} товаров</small></button></div>
       <div className="shop-progress"><div><span>Собрано {done} из {visible.length}</span><b>≈ {total} ฿</b></div><div className="progress-track"><i style={{ width: `${visible.length ? (done / visible.length) * 100 : 0}%` }} /></div></div>
-      <div className="shopping-list">{loading && <div className="catalog-message">Загружаем покупки…</div>}{visible.map((item) => <article key={item.id} className={item.bought ? "shopping-item bought" : "shopping-item"}><label className="shopping-check" aria-label={`${item.bought ? "Вернуть в покупки" : "Отметить купленным"}: ${item.name}`}><input type="checkbox" checked={item.bought} disabled={pendingId === item.id} onChange={() => void toggle(item.id)} /><span className="fake-check"><Check size={15} /></span></label>{item.imageUrl ? <img className="shopping-image" src={item.imageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className="shopping-image placeholder"><ShoppingBasket size={18} /></span>}<span className="shopping-copy"><b>{item.name}</b><small>{item.detail}</small>{item.url && <a href={item.url} target="_blank" rel="noreferrer">Открыть на сайте {item.store}</a>}</span><strong>{item.price} ฿</strong></article>)}{!loading && !visible.length && <EmptyState icon={<ShoppingBasket />} title="Список пуст" text="Добавьте товары из официальных каталогов" />}</div>
+      <div className="shopping-list">{loading && <div className="catalog-message">Загружаем покупки…</div>}{visible.map((item) => <ShoppingListItem key={item.id} item={item} pending={pendingId === item.id} onToggle={() => void toggle(item.id)} onRemove={() => void remove(item.id)} onQuantity={(quantity, unit) => void updatePurchasedQuantity(item.id, quantity, unit)} />)}{!loading && !visible.length && <EmptyState icon={<ShoppingBasket />} title="Список пуст" text="Добавьте товары из официальных каталогов" />}</div>
       {!loading && items.length === 0 && savedPlan?.mode === "stores" && savedPlan.plan.missingProducts.length > 0 && <button className="secondary-action shopping-sync" disabled={syncing} onClick={() => void syncFromMenu()}>{syncing ? <span className="spinner" /> : <ShoppingBasket size={18} />}{syncing ? "Создаём список…" : "Создать список из сохранённого меню"}</button>}
       <div className="total-card"><span><small>Ориентировочно</small><b>{total} ฿</b></span><span><small>Осталось купить</small><b>{visible.filter((i) => !i.bought).reduce((sum, i) => sum + i.price, 0)} ฿</b></span></div>
-      <button className="main-action bottom-space" disabled={completing || items.length === 0 || items.some((item) => !item.bought)} onClick={() => void complete()}>{completing ? "Переносим в запасы…" : items.some((item) => !item.bought) ? "Отметьте все товары купленными" : "Завершить и добавить в запасы"}</button>
+      <button className="main-action bottom-space" disabled={completing || pendingId !== null || items.length === 0 || items.some((item) => !item.bought)} onClick={() => void complete()}>{completing ? "Переносим в запасы…" : items.some((item) => !item.bought) ? "Отметьте или удалите непокупаемые товары" : "Завершить и добавить в запасы"}</button>
     </section>
   );
+}
+
+function ShoppingListItem({ item, pending, onToggle, onRemove, onQuantity }: { item: ShoppingItem; pending: boolean; onToggle: () => void; onRemove: () => void; onQuantity: (quantity: number, unit: ShoppingUnit) => void }) {
+  const [quantity, setQuantity] = useState(item.purchasedQuantity || 1);
+  const [unit, setUnit] = useState<ShoppingUnit>(item.purchasedUnit || "piece");
+  useEffect(() => {
+    setQuantity(item.purchasedQuantity || 1);
+    setUnit(item.purchasedUnit || "piece");
+  }, [item.purchasedQuantity, item.purchasedUnit]);
+  return <article className={item.bought ? "shopping-item bought" : "shopping-item"}>
+    <label className="shopping-check" aria-label={`${item.bought ? "Вернуть в покупки" : "Отметить купленным"}: ${item.name}`}><input type="checkbox" checked={item.bought} disabled={pending} onChange={onToggle} /><span className="fake-check"><Check size={15} /></span></label>
+    {item.imageUrl ? <img className="shopping-image" src={item.imageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className="shopping-image placeholder"><ShoppingBasket size={18} /></span>}
+    <span className="shopping-copy"><b>{item.name}</b><small>{item.detail}</small>{item.url && <a href={item.url} target="_blank" rel="noreferrer">Открыть на сайте {item.store}</a>}</span>
+    <span className="shopping-actions"><strong>{item.price} ฿</strong><button type="button" disabled={pending} onClick={onRemove} aria-label={`Удалить из покупок: ${item.name}`}><Trash2 size={17} /></button></span>
+    {item.bought && <div className="purchased-editor"><label><span>Куплено фактически</span><input aria-label={`Фактическое количество: ${item.name}`} type="number" min="0.01" step="0.01" value={quantity} disabled={pending} onChange={(event) => setQuantity(Number(event.target.value))} /></label><select aria-label={`Единица купленного: ${item.name}`} value={unit} disabled={pending} onChange={(event) => setUnit(event.target.value as ShoppingUnit)}><option value="g">г</option><option value="ml">мл</option><option value="piece">шт</option></select><button type="button" disabled={pending || !Number.isFinite(quantity) || quantity <= 0} onClick={() => onQuantity(quantity, unit)}>Сохранить</button></div>}
+  </article>;
 }
 
 function MoreScreen({ savedPlan, shopping, onSettings }: { savedPlan: SavedMealPlan | null; shopping: ShoppingItem[]; onSettings: () => void }) {

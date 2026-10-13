@@ -190,7 +190,15 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .shopping-copy a { color: var(--forest-2); font-size: .68rem; font-weight: 750; width: fit-content; }
 .shopping-item small { color: var(--muted); }
 .shopping-item strong { font-size: .82rem; }
+.shopping-actions { display: grid; justify-items: end; gap: 7px; }
+.shopping-actions button { width: 34px; height: 34px; border: 0; border-radius: 10px; background: #f8ece8; color: #a44228; display: grid; place-items: center; cursor: pointer; }
+.shopping-actions button:disabled { opacity: .5; cursor: wait; }
 .shopping-item.bought .shopping-copy > b, .shopping-item.bought .shopping-copy > small { opacity: .5; text-decoration: line-through; }
+.purchased-editor { grid-column: 2 / -1; display: grid; grid-template-columns: minmax(0, 1fr) 72px auto; gap: 7px; align-items: end; padding-top: 8px; border-top: 1px dashed var(--line); }
+.purchased-editor label { display: grid; gap: 4px; }
+.purchased-editor label span { color: var(--muted); font-size: .68rem; font-weight: 750; }
+.purchased-editor input, .purchased-editor select { min-width: 0; height: 39px; border: 1px solid var(--line); border-radius: 10px; background: white; padding: 0 9px; }
+.purchased-editor button { height: 39px; border: 0; border-radius: 10px; padding: 0 11px; background: var(--forest); color: white; font-weight: 800; cursor: pointer; }
 .shopping-sync { width: 100%; margin-top: 12px; }
 .total-card { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 12px; }
 .total-card span { background: white; border: 1px solid var(--line); border-radius: 16px; padding: 12px; display: grid; gap: 4px; }

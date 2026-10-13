@@ -9,7 +9,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   if (!isSupabaseConfigured()) return isDemoMode() ? NextResponse.json({ source: "demo", bought: parsed.data.bought }) : NextResponse.json(configurationError, { status: 503 });
   try {
     const { id } = await context.params;
-    return NextResponse.json({ source: "supabase", bought: await updateShoppingItem(id, parsed.data.bought) });
+    return NextResponse.json({ source: "supabase", ...await updateShoppingItem(id, parsed.data) });
   } catch (error) {
     console.error("Shopping update failed", error);
     return NextResponse.json({ error: { code: "DATABASE_UNAVAILABLE", message: "Не удалось обновить покупку" } }, { status: 503 });

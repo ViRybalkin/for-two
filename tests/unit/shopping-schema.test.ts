@@ -18,9 +18,12 @@ describe("shopping persistence schemas", () => {
     expect(shoppingItemInputSchema.safeParse({ name: "Рис", detail: "1 упаковка", price: 120, store: "Makro", url: "javascript:alert(1)" }).success).toBe(false);
   });
 
-  it("requires an explicit purchased state", () => {
+  it("accepts either a purchased state or a complete actual quantity", () => {
     expect(shoppingItemPatchSchema.safeParse({ bought: true }).success).toBe(true);
+    expect(shoppingItemPatchSchema.safeParse({ purchasedQuantity: 650, purchasedUnit: "ml" }).success).toBe(true);
     expect(shoppingItemPatchSchema.safeParse({}).success).toBe(false);
+    expect(shoppingItemPatchSchema.safeParse({ purchasedQuantity: 650 }).success).toBe(false);
+    expect(shoppingItemPatchSchema.safeParse({ purchasedQuantity: 0, purchasedUnit: "ml" }).success).toBe(false);
   });
 
   it.each([

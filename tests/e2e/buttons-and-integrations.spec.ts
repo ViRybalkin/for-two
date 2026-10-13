@@ -334,7 +334,8 @@ test("пустой список восстанавливается из сохр
 });
 
 test("завершённые покупки переходят в запасы", async ({ page }) => {
-  let shoppingItems = [{ id: "milk", name: "Молоко", detail: "2 × 1 л", price: 140, bought: false, store: "Makro" }];
+  let shoppingItems = [{ id: "milk", name: "Молоко", detail: "2 × 1 л", price: 140, bought: false, store: "Makro", purchasedQuantity: 2000, purchasedUnit: "ml" }];
+  const patches: Array<Record<string, unknown>> = [];
   await page.route("**/api/shopping", async (route) => {
     if (route.request().method() === "GET") {
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", items: shoppingItems }) });
@@ -342,23 +343,44 @@ test("завершённые покупки переходят в запасы",
     }
     if (route.request().method() === "PUT") {
       shoppingItems = [];
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", completed: 1, added: 1, inventory: [{ id: "inventory-milk", name: "Молоко", quantity: 2000, unit: "мл", storage: "Кладовая", expiry: "срок не указан", icon: "🥬" }] }) });
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", completed: 1, added: 1, inventory: [{ id: "inventory-milk", name: "Молоко", quantity: 1500, unit: "мл", storage: "Кладовая", expiry: "срок не указан", icon: "🥬" }] }) });
       return;
     }
     await route.continue();
   });
   await page.route("**/api/shopping/milk", async (route) => {
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", bought: true }) });
+    patches.push(route.request().postDataJSON());
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", bought: true, purchasedQuantity: 1500, purchasedUnit: "ml" }) });
   });
   await page.reload();
   await page.getByRole("button", { name: "Покупки", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Отметьте все товары купленными" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Отметьте или удалите непокупаемые товары" })).toBeDisabled();
   await page.getByLabel("Отметить купленным: Молоко").click();
+  await page.getByLabel("Фактическое количество: Молоко").fill("1500");
+  await page.getByRole("button", { name: "Сохранить", exact: true }).click();
+  expect(patches).toContainEqual({ purchasedQuantity: 1500, purchasedUnit: "ml" });
   await page.getByRole("button", { name: "Завершить и добавить в запасы" }).click();
   await expect(page.getByRole("status")).toContainText("1 товаров добавлено в запасы");
   await page.getByRole("button", { name: "Запасы", exact: true }).click();
   const milk = page.getByText("Молоко", { exact: true }).locator("xpath=ancestor::article");
-  await expect(milk).toContainText("2000 мл");
+  await expect(milk).toContainText("1500 мл");
+});
+
+test("товар можно удалить из покупок, если его не купили", async ({ page }) => {
+  let deleted = false;
+  await page.route("**/api/shopping", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", items: [{ id: "sauce", name: "Рыбный соус", detail: "1 уп. · 700 мл", price: 95, bought: false, store: "Makro", purchasedQuantity: 700, purchasedUnit: "ml" }] }) });
+  });
+  await page.route("**/api/shopping/sauce", async (route) => {
+    deleted = route.request().method() === "DELETE";
+    await route.fulfill({ status: 204, body: "" });
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "Покупки", exact: true }).click();
+  await page.getByRole("button", { name: "Удалить из покупок: Рыбный соус" }).click();
+  expect(deleted).toBe(true);
+  await expect(page.getByText("Рыбный соус", { exact: true })).toBeHidden();
+  await expect(page.getByRole("status")).toContainText("Рыбный соус удалён из покупок");
 });
 
 test("товар из магазина показывает изображение и официальную ссылку", async ({ page }) => {
