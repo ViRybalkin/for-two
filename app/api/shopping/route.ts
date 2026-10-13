@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   if (!parsed.success) return NextResponse.json({ error: { code: "VALIDATION_ERROR", message: "Проверьте товар" } }, { status: 400 });
   if (!isSupabaseConfigured()) return isDemoMode() ? NextResponse.json({ source: "demo", id: crypto.randomUUID() }, { status: 201 }) : NextResponse.json(configurationError, { status: 503 });
   try {
-    return NextResponse.json({ source: "supabase", id: await addShoppingItem(parsed.data) }, { status: 201 });
+    return NextResponse.json({ source: "supabase", ...await addShoppingItem(parsed.data) }, { status: 201 });
   } catch (error) {
     console.error("Shopping create failed", error);
     return NextResponse.json({ error: { code: "DATABASE_UNAVAILABLE", message: "Не удалось добавить покупку" } }, { status: 503 });

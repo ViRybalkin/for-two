@@ -12,6 +12,12 @@ export const shoppingCategories = [
 
 export type ShoppingCategoryId = typeof shoppingCategories[number]["id"];
 
+export const shoppingCategoryIds = shoppingCategories.map((category) => category.id) as [ShoppingCategoryId, ...ShoppingCategoryId[]];
+
+export function isShoppingCategoryId(value: unknown): value is ShoppingCategoryId {
+  return typeof value === "string" && shoppingCategoryIds.includes(value as ShoppingCategoryId);
+}
+
 const categoryKeywords: Array<{ id: Exclude<ShoppingCategoryId, "other">; words: string[] }> = [
   { id: "sauces", words: ["соус", "масло", "уксус", "паста карри", "кокосовое молоко", "тахини", "мисо", "соль", "черный перец", "перец молот", "перец горош", "паприк", "специ", "приправ", "сахар", "мед", "горчиц", "кетчуп", "майонез"] },
   { id: "fish", words: ["рыб", "лосос", "тунец", "кревет", "кальмар", "мидии", "краб", "морепродукт", "форел", "треск", "скумбр", "анчоус"] },

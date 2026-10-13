@@ -36,7 +36,7 @@ import type { GeneratedMealPlan, MealPlanRequest } from "@/lib/schemas/meal-plan
 import { getBangkokDate } from "@/lib/meal-plan-dates";
 import { getMealDishKey } from "@/lib/meal-plan-completion";
 import { CUISINE_OPTIONS } from "@/lib/cuisines";
-import { getShoppingCategory, shoppingCategories } from "@/lib/shopping-categories";
+import { getShoppingCategory, shoppingCategories, type ShoppingCategoryId } from "@/lib/shopping-categories";
 
 type Tab = "today" | "inventory" | "menu" | "shopping" | "more";
 type Storage = "Холодильник" | "Морозильник" | "Кладовая";
@@ -51,7 +51,7 @@ type InventoryItem = {
 };
 type NewInventoryItem = InventoryItem & { expiryDate: string | null };
 type ShoppingUnit = "g" | "ml" | "piece";
-type ShoppingItem = { id: string; name: string; detail: string; price: number; bought: boolean; store: "Tops" | "Makro"; url?: string | null; imageUrl?: string | null; purchasedQuantity?: number; purchasedUnit?: ShoppingUnit };
+type ShoppingItem = { id: string; name: string; detail: string; price: number; bought: boolean; store: "Tops" | "Makro"; url?: string | null; imageUrl?: string | null; purchasedQuantity?: number; purchasedUnit?: ShoppingUnit; category?: ShoppingCategoryId };
 type CatalogProduct = { store: "tops" | "makro"; originalName: string; packageText: string | null; priceThb: number | null; url: string; imageUrl: string | null; availability: string; checkedAt: string };
 type MealDish = GeneratedMealPlan["dishes"][number];
 type SavedMealPlan = { id: string; mode: "inventory" | "stores"; request: MealPlanRequest; plan: GeneratedMealPlan; completed: string[] };
@@ -246,7 +246,7 @@ export function AppShell() {
           const response = await fetch("/api/shopping", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(item) });
           const data = await response.json();
           if (!response.ok) throw new Error(data?.error?.message || "Не удалось добавить покупку");
-          setShopping((old) => [{ ...item, id: data.id || item.id }, ...old]);
+          setShopping((old) => [{ ...item, id: data.id || item.id, category: data.category }, ...old]);
           setSheet(null);
           notify("Товар сохранён в списке покупок");
           return true;
@@ -534,7 +534,7 @@ function ShoppingScreen({ items, loading, savedPlan, setItems, setInventory, not
   const [completing, setCompleting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const visible = items.filter((item) => item.store === "Makro");
-  const groupedItems = shoppingCategories.map((category) => ({ ...category, items: visible.filter((item) => getShoppingCategory(item.name) === category.id) })).filter((category) => category.items.length > 0);
+  const groupedItems = shoppingCategories.map((category) => ({ ...category, items: visible.filter((item) => (item.category || getShoppingCategory(item.name)) === category.id) })).filter((category) => category.items.length > 0);
   const done = visible.filter((item) => item.bought).length;
   const total = visible.reduce((sum, item) => sum + item.price, 0);
   const toggle = async (id: string) => {

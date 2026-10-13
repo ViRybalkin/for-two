@@ -12,6 +12,12 @@ describe("shopping persistence schemas", () => {
     expect(decodeShoppingMetadata("200 g")).toEqual({ detail: "200 g", url: null, imageUrl: null });
   });
 
+  it("persists a model-assigned category without breaking old metadata", () => {
+    const metadata = { detail: "1 кг", url: null, imageUrl: null, category: "produce" as const };
+    expect(decodeShoppingMetadata(encodeShoppingMetadata(metadata))).toEqual(metadata);
+    expect(decodeShoppingMetadata(encodeShoppingMetadata({ ...metadata, category: "invalid" as never })).category).toBeUndefined();
+  });
+
   it("rejects unknown stores and negative prices", () => {
     expect(shoppingItemInputSchema.safeParse({ name: "Рис", detail: "1 упаковка", price: -1, store: "Lotus" }).success).toBe(false);
     expect(shoppingItemInputSchema.safeParse({ name: "Рис", detail: "1 упаковка", price: 120, store: "Tops" }).success).toBe(false);

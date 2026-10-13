@@ -343,7 +343,8 @@ test("покупки сгруппированы по продуктовым ка
         { id: "tomato", name: "Помидоры", detail: "1 кг", price: 60, bought: false, store: "Makro" },
         { id: "chicken", name: "Куриное филе", detail: "1 кг", price: 120, bought: false, store: "Makro" },
         { id: "fish", name: "Филе белой рыбы", detail: "1 кг", price: 150, bought: true, store: "Makro", purchasedQuantity: 1000, purchasedUnit: "g" },
-        { id: "sauce", name: "Рыбный соус", detail: "700 мл", price: 30, bought: false, store: "Makro" }
+        { id: "sauce", name: "Рыбный соус", detail: "700 мл", price: 30, bought: false, store: "Makro" },
+        { id: "seitan", name: "Сейтан", detail: "500 г", price: 90, bought: false, store: "Makro", category: "plant" }
       ] })
     });
   });
@@ -353,11 +354,13 @@ test("покупки сгруппированы по продуктовым ка
   const produce = page.getByRole("region", { name: "Овощи и фрукты" });
   const meat = page.getByRole("region", { name: "Мясо и птица" });
   const fish = page.getByRole("region", { name: "Рыба и морепродукты" });
+  const plant = page.getByRole("region", { name: "Бобовые и растительные продукты" });
   const sauces = page.getByRole("region", { name: "Соусы, масла и специи" });
   await expect(produce).toContainText("Помидоры");
   await expect(meat).toContainText("Куриное филе");
   await expect(fish).toContainText("Филе белой рыбы");
   await expect(fish.locator("header")).toContainText("1 / 1");
+  await expect(plant).toContainText("Сейтан");
   await expect(sauces).toContainText("Рыбный соус");
 });
 

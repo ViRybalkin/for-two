@@ -3,6 +3,8 @@ import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 import type { GeneratedMealPlan } from "@/lib/schemas/meal-plan";
 import { searchOfficialCatalogBatch } from "@/lib/services/catalog-search";
+import { classifyShoppingCategories } from "@/lib/services/classify-shopping-categories";
+import { isShoppingCategoryId, type ShoppingCategoryId } from "@/lib/shopping-categories";
 
 const optionalHttpUrl = z.string().url().refine((value) => /^https?:\/\//i.test(value), "Only HTTP links are supported").nullable().optional();
 
@@ -45,6 +47,7 @@ type ShoppingMetadata = {
   requiredDetail?: string;
   purchasedQuantity?: number;
   purchasedUnit?: BaseUnit;
+  category?: ShoppingCategoryId;
 };
 
 function safeHttpUrl(value: unknown) {
@@ -67,6 +70,7 @@ export function decodeShoppingMetadata(value: string | null): ShoppingMetadata {
     if (typeof parsed.requiredDetail === "string" && parsed.requiredDetail) metadata.requiredDetail = parsed.requiredDetail;
     if (typeof parsed.purchasedQuantity === "number" && parsed.purchasedQuantity > 0) metadata.purchasedQuantity = parsed.purchasedQuantity;
     if (parsed.purchasedUnit === "g" || parsed.purchasedUnit === "ml" || parsed.purchasedUnit === "piece") metadata.purchasedUnit = parsed.purchasedUnit;
+    if (isShoppingCategoryId(parsed.category)) metadata.category = parsed.category;
     return metadata;
   } catch {
     return { detail: "фасовка не указана", url: null, imageUrl: null };
@@ -175,7 +179,8 @@ export async function listShoppingItems() {
       url: metadata.url,
       imageUrl: metadata.imageUrl,
       purchasedQuantity: purchased.quantity,
-      purchasedUnit: purchased.unit
+      purchasedUnit: purchased.unit,
+      category: metadata.category
     };
   });
 }
@@ -186,10 +191,11 @@ export async function addShoppingItem(input: z.infer<typeof shoppingItemInputSch
   const normalizedName = input.name.trim().toLowerCase();
   const { data: product, error: productError } = await client.from("products").upsert({ normalized_name: normalizedName, display_name_ru: input.name.trim(), default_unit: "piece" }, { onConflict: "normalized_name,default_unit" }).select("id").single();
   if (productError) throw productError;
-  const metadata = encodeShoppingMetadata({ detail: input.detail, url: input.url || null, imageUrl: input.imageUrl || null });
+  const [category] = await classifyShoppingCategories([input.name]);
+  const metadata = encodeShoppingMetadata({ detail: input.detail, url: input.url || null, imageUrl: input.imageUrl || null, category });
   const { data, error } = await client.from("shopping_list_items").insert({ shopping_list_id: listId, product_id: product.id, planned_packages: 1, estimated_price_thb: input.price, purchased: false, department: metadata }).select("id").single();
   if (error) throw error;
-  return data.id as string;
+  return { id: data.id as string, category };
 }
 
 export async function createShoppingItemsForMealPlan(mealPlanId: string, plan: GeneratedMealPlan) {
@@ -248,12 +254,14 @@ export async function createShoppingItemsForMealPlan(mealPlanId: string, plan: G
     combined.set(key, current ? { ...current, quantity: current.quantity + item.quantity } : { name: item.name.trim(), normalizedName, quantity: item.quantity, unit: item.unit });
   }
   const productsToSave = [...combined.values()];
-  let catalogMatches: Awaited<ReturnType<typeof searchOfficialCatalogBatch>> = [];
-  try {
-    catalogMatches = await searchOfficialCatalogBatch(productsToSave.map((item) => item.name), "makro");
-  } catch (error) {
-    console.error("Catalog batch enrichment failed", error);
-  }
+  const productNames = productsToSave.map((item) => item.name);
+  const [catalogMatches, categories] = await Promise.all([
+    searchOfficialCatalogBatch(productNames, "makro").catch((error) => {
+      console.error("Catalog batch enrichment failed", error);
+      return [];
+    }),
+    classifyShoppingCategories(productNames)
+  ]);
   const catalogByName = new Map(catalogMatches.map((product) => [product.queryName.trim().toLocaleLowerCase("ru"), product]));
   const { data: products, error: productError } = await client
     .from("products")
@@ -263,7 +271,7 @@ export async function createShoppingItemsForMealPlan(mealPlanId: string, plan: G
 
   const productByKey = new Map((products || []).map((product) => [`${product.normalized_name}:${product.default_unit}`, product.id]));
   const estimatedPrice = Math.round(plan.summary.estimatedTotalThb / productsToSave.length);
-  const shoppingItems = productsToSave.map((item) => {
+  const shoppingItems = productsToSave.map((item, index) => {
     const productId = productByKey.get(`${item.normalizedName}:${item.unit}`);
     if (!productId) throw new Error(`Product was not persisted: ${item.normalizedName}`);
     const catalog = catalogByName.get(item.name.toLocaleLowerCase("ru"));
@@ -282,7 +290,8 @@ export async function createShoppingItemsForMealPlan(mealPlanId: string, plan: G
         purchasedQuantity: purchase.purchasedQuantity,
         purchasedUnit: purchase.purchasedUnit,
         url: catalog?.url || null,
-        imageUrl: catalog?.imageUrl || null
+        imageUrl: catalog?.imageUrl || null,
+        category: categories[index]
       })
     };
   });
