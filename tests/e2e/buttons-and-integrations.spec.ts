@@ -333,6 +333,34 @@ test("пустой список восстанавливается из сохр
   await expect(page.getByRole("status")).toContainText("Список создан · 1 товаров");
 });
 
+test("покупки сгруппированы по продуктовым категориям", async ({ page }) => {
+  await page.route("**/api/shopping", async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ source: "supabase", items: [
+        { id: "tomato", name: "Помидоры", detail: "1 кг", price: 60, bought: false, store: "Makro" },
+        { id: "chicken", name: "Куриное филе", detail: "1 кг", price: 120, bought: false, store: "Makro" },
+        { id: "fish", name: "Филе белой рыбы", detail: "1 кг", price: 150, bought: true, store: "Makro", purchasedQuantity: 1000, purchasedUnit: "g" },
+        { id: "sauce", name: "Рыбный соус", detail: "700 мл", price: 30, bought: false, store: "Makro" }
+      ] })
+    });
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "Покупки", exact: true }).click();
+
+  const produce = page.getByRole("region", { name: "Овощи и фрукты" });
+  const meat = page.getByRole("region", { name: "Мясо и птица" });
+  const fish = page.getByRole("region", { name: "Рыба и морепродукты" });
+  const sauces = page.getByRole("region", { name: "Соусы, масла и специи" });
+  await expect(produce).toContainText("Помидоры");
+  await expect(meat).toContainText("Куриное филе");
+  await expect(fish).toContainText("Филе белой рыбы");
+  await expect(fish.locator("header")).toContainText("1 / 1");
+  await expect(sauces).toContainText("Рыбный соус");
+});
+
 test("завершённые покупки переходят в запасы", async ({ page }) => {
   let shoppingItems = [{ id: "milk", name: "Молоко", detail: "2 × 1 л", price: 140, bought: false, store: "Makro", purchasedQuantity: 2000, purchasedUnit: "ml" }];
   const patches: Array<Record<string, unknown>> = [];

@@ -36,6 +36,7 @@ import type { GeneratedMealPlan, MealPlanRequest } from "@/lib/schemas/meal-plan
 import { getBangkokDate } from "@/lib/meal-plan-dates";
 import { getMealDishKey } from "@/lib/meal-plan-completion";
 import { CUISINE_OPTIONS } from "@/lib/cuisines";
+import { getShoppingCategory, shoppingCategories } from "@/lib/shopping-categories";
 
 type Tab = "today" | "inventory" | "menu" | "shopping" | "more";
 type Storage = "Холодильник" | "Морозильник" | "Кладовая";
@@ -533,6 +534,7 @@ function ShoppingScreen({ items, loading, savedPlan, setItems, setInventory, not
   const [completing, setCompleting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const visible = items.filter((item) => item.store === "Makro");
+  const groupedItems = shoppingCategories.map((category) => ({ ...category, items: visible.filter((item) => getShoppingCategory(item.name) === category.id) })).filter((category) => category.items.length > 0);
   const done = visible.filter((item) => item.bought).length;
   const total = visible.reduce((sum, item) => sum + item.price, 0);
   const toggle = async (id: string) => {
@@ -620,7 +622,14 @@ function ShoppingScreen({ items, loading, savedPlan, setItems, setInventory, not
       <BrandHeader title="Покупки" subtitle={`${items.length} ${items.length % 10 === 1 && items.length % 100 !== 11 ? "товар" : items.length % 10 >= 2 && items.length % 10 <= 4 && (items.length % 100 < 12 || items.length % 100 > 14) ? "товара" : "товаров"} в активном списке`} action={<button className="icon-button" onClick={onSearch} aria-label="Найти товар в магазинах"><Plus /></button>} />
       <div className="store-tabs"><button className="active makro" type="button"><span>M</span><b>Makro</b><small>{visible.length} товаров</small></button></div>
       <div className="shop-progress"><div><span>Собрано {done} из {visible.length}</span><b>≈ {total} ฿</b></div><div className="progress-track"><i style={{ width: `${visible.length ? (done / visible.length) * 100 : 0}%` }} /></div></div>
-      <div className="shopping-list">{loading && <div className="catalog-message">Загружаем покупки…</div>}{visible.map((item) => <ShoppingListItem key={item.id} item={item} pending={pendingId === item.id} onToggle={() => void toggle(item.id)} onRemove={() => void remove(item.id)} onQuantity={(quantity, unit) => void updatePurchasedQuantity(item.id, quantity, unit)} />)}{!loading && !visible.length && <EmptyState icon={<ShoppingBasket />} title="Список пуст" text="Добавьте товары из официальных каталогов" />}</div>
+      <div className="shopping-groups">
+        {loading && <div className="catalog-message">Загружаем покупки…</div>}
+        {groupedItems.map((category) => <section className="shopping-category" key={category.id} aria-labelledby={`shopping-category-${category.id}`}>
+          <header><h2 id={`shopping-category-${category.id}`}>{category.title}</h2><span>{category.items.filter((item) => item.bought).length} / {category.items.length}</span></header>
+          <div className="shopping-list">{category.items.map((item) => <ShoppingListItem key={item.id} item={item} pending={pendingId === item.id} onToggle={() => void toggle(item.id)} onRemove={() => void remove(item.id)} onQuantity={(quantity, unit) => void updatePurchasedQuantity(item.id, quantity, unit)} />)}</div>
+        </section>)}
+        {!loading && !visible.length && <div className="shopping-list"><EmptyState icon={<ShoppingBasket />} title="Список пуст" text="Добавьте товары из официальных каталогов" /></div>}
+      </div>
       {!loading && items.length === 0 && savedPlan?.mode === "stores" && savedPlan.plan.missingProducts.length > 0 && <button className="secondary-action shopping-sync" disabled={syncing} onClick={() => void syncFromMenu()}>{syncing ? <span className="spinner" /> : <ShoppingBasket size={18} />}{syncing ? "Создаём список…" : "Создать список из сохранённого меню"}</button>}
       <div className="total-card"><span><small>Ориентировочно</small><b>{total} ฿</b></span><span><small>Осталось купить</small><b>{visible.filter((i) => !i.bought).reduce((sum, i) => sum + i.price, 0)} ฿</b></span></div>
       <button className="main-action bottom-space" disabled={completing || pendingId !== null || items.length === 0 || items.some((item) => !item.bought)} onClick={() => void complete()}>{completing ? "Переносим в запасы…" : items.some((item) => !item.bought) ? "Отметьте или удалите непокупаемые товары" : "Завершить и добавить в запасы"}</button>

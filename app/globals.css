@@ -179,6 +179,11 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .shop-progress > div:first-child { display: flex; justify-content: space-between; font-size: .79rem; }
 .progress-track { height: 7px; background: rgba(255,255,255,.2); border-radius: 999px; margin-top: 10px; overflow: hidden; }
 .progress-track i { height: 100%; background: var(--lime); border-radius: inherit; display: block; transition: width .2s ease; }
+.shopping-groups { display: grid; gap: 17px; }
+.shopping-category { display: grid; gap: 8px; }
+.shopping-category > header { display: flex; align-items: center; justify-content: space-between; padding: 0 4px; }
+.shopping-category > header h2 { margin: 0; color: var(--forest); font-size: .96rem; letter-spacing: -.01em; }
+.shopping-category > header span { min-width: 45px; border-radius: 999px; background: #e4ece7; padding: 5px 9px; color: var(--muted); text-align: center; font-size: .7rem; font-weight: 800; }
 .shopping-list { background: white; border: 1px solid var(--line); border-radius: 21px; overflow: hidden; }
 .shopping-item { min-height: 78px; display: grid; grid-template-columns: auto auto 1fr auto; align-items: center; gap: 10px; padding: 11px 13px; border-bottom: 1px solid var(--line); }
 .shopping-item:last-child { border: 0; }
