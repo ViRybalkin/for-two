@@ -356,7 +356,15 @@ test("завершённые покупки переходят в запасы",
   await page.getByRole("button", { name: "Покупки", exact: true }).click();
   await expect(page.getByRole("button", { name: "Отметьте или удалите непокупаемые товары" })).toBeDisabled();
   await page.getByLabel("Отметить купленным: Молоко").click();
-  await page.getByLabel("Фактическое количество: Молоко").fill("1500");
+  await expect(page.getByText("Количество", { exact: true })).toBeVisible();
+  await expect(page.getByText("Единица", { exact: true })).toBeVisible();
+  const purchasedQuantity = page.getByLabel("Фактическое количество: Молоко");
+  const purchasedUnit = page.getByLabel("Единица купленного: Молоко");
+  await expect(purchasedQuantity).toHaveCSS("opacity", "1");
+  await expect(purchasedUnit).toHaveValue("ml");
+  await expect(purchasedUnit).toHaveCSS("color", "rgb(24, 50, 43)");
+  await expect(purchasedUnit).toHaveCSS("-webkit-text-fill-color", "rgb(24, 50, 43)");
+  await purchasedQuantity.fill("1500");
   await page.getByRole("button", { name: "Сохранить", exact: true }).click();
   expect(patches).toContainEqual({ purchasedQuantity: 1500, purchasedUnit: "ml" });
   await page.getByRole("button", { name: "Завершить и добавить в запасы" }).click();
