@@ -136,6 +136,9 @@ test("запасы сгруппированы по тем же категори�
   await page.reload();
   await page.getByRole("button", { name: "Запасы", exact: true }).click();
 
+  await expect(page.getByRole("button", { name: "Холодильник", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Морозильник", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Кладовая", exact: true })).toHaveCount(0);
   await expect(page.getByRole("region", { name: "Овощи и фрукты" })).toContainText("Помидоры");
   await expect(page.getByRole("region", { name: "Бобовые и растительные продукты" })).toContainText("Сейтан");
   await expect(page.getByRole("region", { name: "Крупы, макароны и хлеб" })).toContainText("Рис");

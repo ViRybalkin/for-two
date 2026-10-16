@@ -348,9 +348,8 @@ function Metric({ value, label }: { value: string; label: string }) {
 
 function InventoryScreen({ items, loading, setItems, onAdd, notify }: { items: InventoryItem[]; loading: boolean; setItems: React.Dispatch<React.SetStateAction<InventoryItem[]>>; onAdd: () => void; notify: (text: string) => void }) {
   const [query, setQuery] = useState("");
-  const [storage, setStorage] = useState<"Все" | Storage>("Все");
   const [pendingId, setPendingId] = useState<string | null>(null);
-  const visible = items.filter((item) => (storage === "Все" || item.storage === storage) && item.name.toLowerCase().includes(query.toLowerCase()));
+  const visible = items.filter((item) => item.name.toLowerCase().includes(query.toLowerCase()));
   const groupedItems = groupProductsByCategory(visible);
   const adjust = async (id: string, direction: number) => {
     const item = items.find((entry) => entry.id === id);
@@ -378,9 +377,6 @@ function InventoryScreen({ items, loading, setItems, onAdd, notify }: { items: I
     <section className="screen">
       <BrandHeader title="Запасы" subtitle={`${items.length} продуктов дома`} action={<button className="icon-button" onClick={onAdd} aria-label="Добавить продукт"><Plus /></button>} />
       <label className="search-box"><Search size={19} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Найти продукт" /></label>
-      <div className="filter-scroll">
-        {(["Все", "Холодильник", "Морозильник", "Кладовая"] as const).map((item) => <button key={item} className={storage === item ? "filter-chip active" : "filter-chip"} onClick={() => setStorage(item)}>{item}</button>)}
-      </div>
       <div className="inventory-summary"><div><Package size={20} /><span><b>{items.length}</b> позиций</span></div><div><Clock3 size={20} /><span><b>{items.filter((item) => item.quantity > 0 && item.expiry !== "срок не указан").length}</b> скоро использовать</span></div></div>
       <div className="inventory-groups">
         {loading && <div className="catalog-message">Загружаем запасы…</div>}
@@ -393,7 +389,7 @@ function InventoryScreen({ items, loading, setItems, onAdd, notify }: { items: I
             </article>
           ))}</div>
         </section>)}
-        {!loading && !visible.length && <EmptyState icon={items.length ? <Search /> : <Package />} title={items.length ? "Ничего не найдено" : "Запасов пока нет"} text={items.length ? "Измените запрос или место хранения" : "Добавьте первый продукт вручную"} />}
+        {!loading && !visible.length && <EmptyState icon={items.length ? <Search /> : <Package />} title={items.length ? "Ничего не найдено" : "Запасов пока нет"} text={items.length ? "Измените поисковый запрос" : "Добавьте первый продукт вручную"} />}
       </div>
     </section>
   );
