@@ -364,8 +364,11 @@ test("покупки сгруппированы по продуктовым ка
   await expect(sauces).toContainText("Рыбный соус");
 });
 
-test("завершённые покупки переходят в запасы", async ({ page }) => {
-  let shoppingItems = [{ id: "milk", name: "Молоко", detail: "2 × 1 л", price: 140, bought: false, store: "Makro", purchasedQuantity: 2000, purchasedUnit: "ml" }];
+test("купленные товары переходят в запасы, а некупленные можно пропустить", async ({ page }) => {
+  let shoppingItems = [
+    { id: "milk", name: "Молоко", detail: "2 × 1 л", price: 140, bought: false, store: "Makro", purchasedQuantity: 2000, purchasedUnit: "ml" },
+    { id: "sauce", name: "Рыбный соус", detail: "700 мл", price: 95, bought: false, store: "Makro", purchasedQuantity: 700, purchasedUnit: "ml" }
+  ];
   const patches: Array<Record<string, unknown>> = [];
   await page.route("**/api/shopping", async (route) => {
     if (route.request().method() === "GET") {
@@ -385,8 +388,10 @@ test("завершённые покупки переходят в запасы",
   });
   await page.reload();
   await page.getByRole("button", { name: "Покупки", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Отметьте или удалите непокупаемые товары" })).toBeDisabled();
+  await expect(page.getByText("Куплено: 0 · не куплено: 2. В запасы попадут только купленные товары.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Завершить покупки" })).toBeEnabled();
   await page.getByLabel("Отметить купленным: Молоко").click();
+  await expect(page.getByText("Куплено: 1 · не куплено: 1. В запасы попадут только купленные товары.")).toBeVisible();
   await expect(page.getByText("Количество", { exact: true })).toBeVisible();
   await expect(page.getByText("Единица", { exact: true })).toBeVisible();
   const purchasedQuantity = page.getByLabel("Фактическое количество: Молоко");
@@ -398,7 +403,7 @@ test("завершённые покупки переходят в запасы",
   await purchasedQuantity.fill("1500");
   await page.getByRole("button", { name: "Сохранить", exact: true }).click();
   expect(patches).toContainEqual({ purchasedQuantity: 1500, purchasedUnit: "ml" });
-  await page.getByRole("button", { name: "Завершить и добавить в запасы" }).click();
+  await page.getByRole("button", { name: "Завершить покупки" }).click();
   await expect(page.getByRole("status")).toContainText("1 товаров добавлено в запасы");
   await page.getByRole("button", { name: "Запасы", exact: true }).click();
   const milk = page.getByText("Молоко", { exact: true }).locator("xpath=ancestor::article");

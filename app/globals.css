@@ -210,6 +210,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .total-card { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 12px; }
 .total-card span { background: white; border: 1px solid var(--line); border-radius: 16px; padding: 12px; display: grid; gap: 4px; }
 .total-card small { color: var(--muted); }.total-card b { font-size: 1.05rem; }
+.shopping-completion-note { margin: 12px 8px -5px; color: var(--muted); text-align: center; font-size: .76rem; line-height: 1.45; }
 .bottom-space { margin-bottom: 8px; }
 
 .profile-card { background: var(--forest); color: white; border-radius: 23px; padding: 15px; display: flex; align-items: center; gap: 12px; }

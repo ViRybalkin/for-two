@@ -632,7 +632,8 @@ function ShoppingScreen({ items, loading, savedPlan, setItems, setInventory, not
       </div>
       {!loading && items.length === 0 && savedPlan?.mode === "stores" && savedPlan.plan.missingProducts.length > 0 && <button className="secondary-action shopping-sync" disabled={syncing} onClick={() => void syncFromMenu()}>{syncing ? <span className="spinner" /> : <ShoppingBasket size={18} />}{syncing ? "Создаём список…" : "Создать список из сохранённого меню"}</button>}
       <div className="total-card"><span><small>Ориентировочно</small><b>{total} ฿</b></span><span><small>Осталось купить</small><b>{visible.filter((i) => !i.bought).reduce((sum, i) => sum + i.price, 0)} ฿</b></span></div>
-      <button className="main-action bottom-space" disabled={completing || pendingId !== null || items.length === 0 || items.some((item) => !item.bought)} onClick={() => void complete()}>{completing ? "Переносим в запасы…" : items.some((item) => !item.bought) ? "Отметьте или удалите непокупаемые товары" : "Завершить и добавить в запасы"}</button>
+      {items.length > 0 && <p className="shopping-completion-note">Куплено: {done} · не куплено: {visible.length - done}. В запасы попадут только купленные товары.</p>}
+      <button className="main-action bottom-space" disabled={completing || pendingId !== null || items.length === 0} onClick={() => void complete()}>{completing ? "Переносим купленное в запасы…" : "Завершить покупки"}</button>
     </section>
   );
 }
