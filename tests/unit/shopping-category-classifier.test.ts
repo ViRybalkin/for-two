@@ -6,9 +6,9 @@ vi.mock("@/lib/openai", () => ({
   getOpenAI: () => ({ responses: { parse: parseMock } })
 }));
 
-import { classifyShoppingCategories, mergeCategoryAssignments } from "@/lib/services/classify-shopping-categories";
+import { classifyProductCategories, mergeCategoryAssignments } from "@/lib/services/classify-shopping-categories";
 
-describe("model shopping category classifier", () => {
+describe("shared product category classifier", () => {
   const previousApiKey = process.env.OPENAI_API_KEY;
 
   beforeEach(() => {
@@ -27,7 +27,7 @@ describe("model shopping category classifier", () => {
       { index: 1, category: "sauces" }
     ] } });
 
-    await expect(classifyShoppingCategories(["Помидоры", "Рыбный соус"])).resolves.toEqual(["produce", "sauces"]);
+    await expect(classifyProductCategories(["Помидоры", "Рыбный соус"])).resolves.toEqual(["produce", "sauces"]);
     expect(parseMock).toHaveBeenCalledWith(expect.objectContaining({
       store: false,
       input: expect.arrayContaining([expect.objectContaining({ role: "user" })]),
@@ -41,7 +41,7 @@ describe("model shopping category classifier", () => {
 
   it("does not call the model when OpenAI is not configured", async () => {
     delete process.env.OPENAI_API_KEY;
-    await expect(classifyShoppingCategories(["Йогурт"])).resolves.toEqual(["dairy"]);
+    await expect(classifyProductCategories(["Йогурт"])).resolves.toEqual(["dairy"]);
     expect(parseMock).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getShoppingCategory } from "@/lib/shopping-categories";
+import { getShoppingCategory, groupProductsByCategory } from "@/lib/shopping-categories";
 
 describe("shopping categories", () => {
   it.each([
@@ -18,5 +18,19 @@ describe("shopping categories", () => {
     ["Неизвестный продукт", "other"]
   ])("places %s into %s", (name, category) => {
     expect(getShoppingCategory(name)).toBe(category);
+  });
+
+  it("groups inventory and shopping shaped products with the same logic", () => {
+    const grouped = groupProductsByCategory([
+      { name: "Помидоры", quantity: 2 },
+      { name: "Сейтан", price: 150, category: "plant" as const },
+      { name: "Рис", quantity: 500 }
+    ]);
+
+    expect(grouped.map(({ id, items }) => ({ id, names: items.map((item) => item.name) }))).toEqual([
+      { id: "produce", names: ["Помидоры"] },
+      { id: "plant", names: ["Сейтан"] },
+      { id: "grains", names: ["Рис"] }
+    ]);
   });
 });

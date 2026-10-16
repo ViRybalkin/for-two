@@ -18,7 +18,7 @@ export function mergeCategoryAssignments(names: string[], assignments: Array<{ i
   return names.map((name, index) => byIndex.get(index) || getShoppingCategory(name));
 }
 
-export async function classifyShoppingCategories(names: string[]) {
+export async function classifyProductCategories(names: string[]) {
   if (!names.length) return [];
   if (!process.env.OPENAI_API_KEY) return names.map(getShoppingCategory);
 
@@ -30,7 +30,7 @@ export async function classifyShoppingCategories(names: string[]) {
         {
           role: "system",
           content: [
-            "Классифицируй каждый продукт из списка покупок ровно в одну категорию.",
+            "Классифицируй каждый продукт ровно в одну категорию.",
             "Верни по одной записи для каждого входного index и не меняй индексы.",
             ...shoppingCategories.map((category) => `${category.id}: ${category.title}`),
             "Ориентируйся на обычный отдел продуктового магазина. Рыбный и устричный соусы относятся к sauces, а не к fish. Кокосовое молоко относится к sauces. Если уверенной категории нет, используй other."
@@ -51,3 +51,5 @@ export async function classifyShoppingCategories(names: string[]) {
     return names.map(getShoppingCategory);
   }
 }
+
+export const classifyShoppingCategories = classifyProductCategories;

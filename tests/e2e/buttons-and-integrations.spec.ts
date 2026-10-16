@@ -120,6 +120,27 @@ test("рабочие элементы управления дают наблюд
   await expect(page.getByRole("button", { name: /Японская/ })).toHaveClass(/active/);
 });
 
+test("запасы сгруппированы по тем же категориям, что и покупки", async ({ page }) => {
+  await page.route("**/api/inventory", async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ source: "supabase", items: [
+        { id: "tomato", name: "Помидоры", quantity: 4, unit: "шт", storage: "Холодильник", expiry: "срок не указан", icon: "🥬" },
+        { id: "seitan", name: "Сейтан", quantity: 300, unit: "г", storage: "Холодильник", expiry: "срок не указан", icon: "🥬", category: "plant" },
+        { id: "rice", name: "Рис", quantity: 500, unit: "г", storage: "Кладовая", expiry: "срок не указан", icon: "🍚" }
+      ] })
+    });
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "Запасы", exact: true }).click();
+
+  await expect(page.getByRole("region", { name: "Овощи и фрукты" })).toContainText("Помидоры");
+  await expect(page.getByRole("region", { name: "Бобовые и растительные продукты" })).toContainText("Сейтан");
+  await expect(page.getByRole("region", { name: "Крупы, макароны и хлеб" })).toContainText("Рис");
+});
+
 test("UI использует ответ модели и отправляет изменённые параметры", async ({ page }) => {
   let requestBody: Record<string, unknown> | null = null;
   let revisionBody: Record<string, unknown> | null = null;

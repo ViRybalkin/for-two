@@ -32,7 +32,7 @@ test("локальные API валидируют данные и работаю
   });
   expect(inventory.ok()).toBe(true);
   const inventoryData = await inventory.json();
-  expect(inventoryData).toMatchObject({ source: "demo" });
+  expect(inventoryData).toMatchObject({ source: "demo", category: "produce" });
   expect((await request.delete(`/api/inventory/${inventoryData.id}`)).status()).toBe(204);
 
   const invalidCatalog = await request.get("/api/catalog/search?q=x");

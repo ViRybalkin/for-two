@@ -33,3 +33,17 @@ export function getShoppingCategory(name: string): ShoppingCategoryId {
   const normalized = name.toLocaleLowerCase("ru-RU").replaceAll("ё", "е");
   return categoryKeywords.find((category) => category.words.some((word) => normalized.includes(word)))?.id || "other";
 }
+
+export type CategorizedProduct = {
+  name: string;
+  category?: ShoppingCategoryId;
+};
+
+export function groupProductsByCategory<T extends CategorizedProduct>(items: T[]) {
+  return shoppingCategories
+    .map((category) => ({
+      ...category,
+      items: items.filter((item) => (item.category || getShoppingCategory(item.name)) === category.id)
+    }))
+    .filter((category) => category.items.length > 0);
+}

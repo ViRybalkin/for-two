@@ -36,7 +36,7 @@ import type { GeneratedMealPlan, MealPlanRequest } from "@/lib/schemas/meal-plan
 import { getBangkokDate } from "@/lib/meal-plan-dates";
 import { getMealDishKey } from "@/lib/meal-plan-completion";
 import { CUISINE_OPTIONS } from "@/lib/cuisines";
-import { getShoppingCategory, shoppingCategories, type ShoppingCategoryId } from "@/lib/shopping-categories";
+import { groupProductsByCategory, type ShoppingCategoryId } from "@/lib/shopping-categories";
 
 type Tab = "today" | "inventory" | "menu" | "shopping" | "more";
 type Storage = "Холодильник" | "Морозильник" | "Кладовая";
@@ -48,6 +48,7 @@ type InventoryItem = {
   storage: Storage;
   expiry: string;
   icon: string;
+  category?: ShoppingCategoryId;
 };
 type NewInventoryItem = InventoryItem & { expiryDate: string | null };
 type ShoppingUnit = "g" | "ml" | "piece";
@@ -229,7 +230,7 @@ export function AppShell() {
           const response = await fetch("/api/inventory", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: item.name, quantity: item.quantity, unit: item.unit, storage: item.storage, expiryDate: item.expiryDate }) });
           const data = await response.json();
           if (!response.ok) throw new Error(data?.error?.message || "Не удалось сохранить продукт");
-          setInventory((old) => [{ ...item, id: data.id || item.id }, ...old]);
+          setInventory((old) => [{ ...item, id: data.id || item.id, category: data.category }, ...old]);
           setSheet(null);
           notify("Продукт сохранён в запасах");
           return true;
@@ -350,6 +351,7 @@ function InventoryScreen({ items, loading, setItems, onAdd, notify }: { items: I
   const [storage, setStorage] = useState<"Все" | Storage>("Все");
   const [pendingId, setPendingId] = useState<string | null>(null);
   const visible = items.filter((item) => (storage === "Все" || item.storage === storage) && item.name.toLowerCase().includes(query.toLowerCase()));
+  const groupedItems = groupProductsByCategory(visible);
   const adjust = async (id: string, direction: number) => {
     const item = items.find((entry) => entry.id === id);
     if (!item) return;
@@ -380,14 +382,17 @@ function InventoryScreen({ items, loading, setItems, onAdd, notify }: { items: I
         {(["Все", "Холодильник", "Морозильник", "Кладовая"] as const).map((item) => <button key={item} className={storage === item ? "filter-chip active" : "filter-chip"} onClick={() => setStorage(item)}>{item}</button>)}
       </div>
       <div className="inventory-summary"><div><Package size={20} /><span><b>{items.length}</b> позиций</span></div><div><Clock3 size={20} /><span><b>{items.filter((item) => item.quantity > 0 && item.expiry !== "срок не указан").length}</b> скоро использовать</span></div></div>
-      <div className="inventory-list">
+      <div className="inventory-groups">
         {loading && <div className="catalog-message">Загружаем запасы…</div>}
-        {visible.map((item) => (
-          <article className="inventory-item" key={item.id}>
-            <span className="food-icon">{item.icon}</span>
-            <div className="item-main"><b>{item.name}</b><span>{item.storage} · {item.expiry}</span><div className="quantity-control"><button disabled={pendingId === item.id} onClick={() => void adjust(item.id, -1)} aria-label={`Уменьшить ${item.name}`}><Minus size={15} /></button><strong>{item.quantity} {item.unit}</strong><button disabled={pendingId === item.id} onClick={() => void adjust(item.id, 1)} aria-label={`Увеличить ${item.name}`}><Plus size={15} /></button></div></div>
-          </article>
-        ))}
+        {groupedItems.map((category) => <section className="product-category" key={category.id} aria-labelledby={`inventory-category-${category.id}`}>
+          <header><h2 id={`inventory-category-${category.id}`}>{category.title}</h2><span>{category.items.length}</span></header>
+          <div className="inventory-list">{category.items.map((item) => (
+            <article className="inventory-item" key={item.id}>
+              <span className="food-icon">{item.icon}</span>
+              <div className="item-main"><b>{item.name}</b><span>{item.storage} · {item.expiry}</span><div className="quantity-control"><button disabled={pendingId === item.id} onClick={() => void adjust(item.id, -1)} aria-label={`Уменьшить ${item.name}`}><Minus size={15} /></button><strong>{item.quantity} {item.unit}</strong><button disabled={pendingId === item.id} onClick={() => void adjust(item.id, 1)} aria-label={`Увеличить ${item.name}`}><Plus size={15} /></button></div></div>
+            </article>
+          ))}</div>
+        </section>)}
         {!loading && !visible.length && <EmptyState icon={items.length ? <Search /> : <Package />} title={items.length ? "Ничего не найдено" : "Запасов пока нет"} text={items.length ? "Измените запрос или место хранения" : "Добавьте первый продукт вручную"} />}
       </div>
     </section>
@@ -534,7 +539,7 @@ function ShoppingScreen({ items, loading, savedPlan, setItems, setInventory, not
   const [completing, setCompleting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const visible = items.filter((item) => item.store === "Makro");
-  const groupedItems = shoppingCategories.map((category) => ({ ...category, items: visible.filter((item) => (item.category || getShoppingCategory(item.name)) === category.id) })).filter((category) => category.items.length > 0);
+  const groupedItems = groupProductsByCategory(visible);
   const done = visible.filter((item) => item.bought).length;
   const total = visible.reduce((sum, item) => sum + item.price, 0);
   const toggle = async (id: string) => {
@@ -624,7 +629,7 @@ function ShoppingScreen({ items, loading, savedPlan, setItems, setInventory, not
       <div className="shop-progress"><div><span>Собрано {done} из {visible.length}</span><b>≈ {total} ฿</b></div><div className="progress-track"><i style={{ width: `${visible.length ? (done / visible.length) * 100 : 0}%` }} /></div></div>
       <div className="shopping-groups">
         {loading && <div className="catalog-message">Загружаем покупки…</div>}
-        {groupedItems.map((category) => <section className="shopping-category" key={category.id} aria-labelledby={`shopping-category-${category.id}`}>
+        {groupedItems.map((category) => <section className="product-category" key={category.id} aria-labelledby={`shopping-category-${category.id}`}>
           <header><h2 id={`shopping-category-${category.id}`}>{category.title}</h2><span>{category.items.filter((item) => item.bought).length} / {category.items.length}</span></header>
           <div className="shopping-list">{category.items.map((item) => <ShoppingListItem key={item.id} item={item} pending={pendingId === item.id} onToggle={() => void toggle(item.id)} onRemove={() => void remove(item.id)} onQuantity={(quantity, unit) => void updatePurchasedQuantity(item.id, quantity, unit)} />)}</div>
         </section>)}
