@@ -89,7 +89,10 @@ test("локальные API валидируют данные и работаю
 test("запасы: добавление, изменение количества, поиск и сохранение после перезагрузки", async ({ page }) => {
   await page.getByRole("button", { name: "Запасы", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Запасы" })).toBeVisible();
+  await expect(page.getByPlaceholder("Найти продукт")).toHaveCSS("font-size", "16px");
   await page.getByRole("button", { name: "Добавить продукт" }).click();
+  await expect(page.getByPlaceholder("Например, авокадо")).toHaveCSS("font-size", "16px");
+  await expect(page.getByRole("combobox", { name: "Единица" })).toHaveCSS("font-size", "16px");
   await page.getByPlaceholder("Например, авокадо").fill("Авокадо");
   await page.getByPlaceholder("500").fill("2");
   await page.getByRole("button", { name: "Добавить в запасы" }).click();
