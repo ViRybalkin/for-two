@@ -4,6 +4,7 @@ import { defaultNutritionProfiles, nutritionProfilesSchema } from "@/lib/nutriti
 export const mealPlanRequestSchema = z.object({
   mode: z.enum(["inventory", "stores"]),
   days: z.number().int().min(1).max(14),
+  startDate: z.string().date().optional(),
   servings: z.number().int().min(1).max(12),
   budgetThb: z.number().positive().max(100_000).optional(),
   cuisines: z.array(z.string().min(1).max(60)).max(25),

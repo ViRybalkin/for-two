@@ -7,6 +7,7 @@ describe("mealPlanRequestSchema", () => {
     const result = mealPlanRequestSchema.safeParse({
       mode: "inventory",
       days: 3,
+      startDate: "2026-10-18",
       servings: 2,
       cuisines: ["тайская"],
       mealTypes: ["breakfast", "lunch", "dinner"],
@@ -19,6 +20,7 @@ describe("mealPlanRequestSchema", () => {
     [{ mode: "inventory", days: 0, servings: 2, cuisines: [], mealTypes: ["dinner"], inventory: [] }, "days"],
     [{ mode: "stores", days: 3, servings: 0, cuisines: [], mealTypes: ["dinner"], inventory: [] }, "servings"],
     [{ mode: "stores", days: 3, servings: 2, cuisines: [], mealTypes: [], inventory: [] }, "mealTypes"],
+    [{ mode: "stores", days: 3, startDate: "2026-02-30", servings: 2, cuisines: [], mealTypes: ["dinner"], inventory: [] }, "startDate"],
     [{ mode: "stores", days: 3, servings: 2, budgetThb: 0, cuisines: [], mealTypes: ["dinner"], inventory: [] }, "budgetThb"]
   ])("rejects invalid %s", (input, path) => {
     const result = mealPlanRequestSchema.safeParse(input);

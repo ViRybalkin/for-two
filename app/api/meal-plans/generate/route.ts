@@ -4,6 +4,7 @@ import { mealPlanRequestSchema } from "@/lib/schemas/meal-plan";
 import { createDemoMealPlan } from "@/lib/demo-meal-plan";
 import { configurationError, isDemoMode } from "@/lib/runtime-mode";
 import { getOpenAIClientError, getOpenAIErrorDiagnostic } from "@/lib/openai-error";
+import { MealPlanStructureError } from "@/lib/meal-plan-dates";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -40,6 +41,9 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error("Meal plan generation failed", getOpenAIErrorDiagnostic(error));
+    if (error instanceof MealPlanStructureError) {
+      return NextResponse.json({ error: { code: "INVALID_MEAL_PLAN", message: "Модель вернула неполное или повторяющееся меню. Попробуйте составить ещё раз." } }, { status: 502 });
+    }
     const clientError = getOpenAIClientError(error);
     return NextResponse.json({ error: clientError.error }, { status: clientError.status });
   }

@@ -9,6 +9,8 @@ import { buildNutritionTargets } from "@/lib/nutrition";
 
 export async function generateMealPlan(input: MealPlanRequest) {
   const client = getOpenAI();
+  const startDate = input.startDate || getBangkokDate();
+  const expectedDishCount = input.days * input.mealTypes.length;
   const response = await client.responses.parse({
     model: process.env.OPENAI_TEXT_MODEL || "gpt-6-luna",
     store: false,
@@ -17,7 +19,8 @@ export async function generateMealPlan(input: MealPlanRequest) {
         role: "system",
         content: [
           "Ты составляешь практичное меню для двух человек в Пхукете.",
-          `Сегодня в Пхукете ${getBangkokDate()}. План начинается с этой даты; используй только последовательные даты в формате YYYY-MM-DD.`,
+          `Сегодня в Пхукете ${getBangkokDate()}. План начинается строго с ${startDate} и содержит ровно ${input.days} последовательных календарных дней в формате YYYY-MM-DD.`,
+          `Верни ровно ${expectedDishCount} блюд: на каждом из ${input.days} дней должно быть ровно по одному блюду для каждого типа из mealTypes. Не добавляй лишний день и не дублируй тип приёма пищи внутри даты.`,
           "Пиши названия и инструкции по-русски. Не используй запрещённые продукты.",
           "Количество ингредиентов должно быть точным, положительным и в g, ml или piece.",
           "Для каждого блюда возвращай 4–5 последовательных и достаточно подробных шагов приготовления: подготовка, тепловая обработка, проверка готовности и подача. Не объединяй весь рецепт в один-два шага и не превышай 5 шагов.",
@@ -36,13 +39,13 @@ export async function generateMealPlan(input: MealPlanRequest) {
       },
       {
         role: "user",
-        content: JSON.stringify({ ...input, nutritionTargets: buildNutritionTargets(input.nutritionProfiles, input.mealTypes) })
+        content: JSON.stringify({ ...input, startDate, nutritionTargets: buildNutritionTargets(input.nutritionProfiles, input.mealTypes) })
       }
     ],
     text: { format: zodTextFormat(generatedMealPlanSchema, "meal_plan") }
   }, MEAL_PLAN_AI_REQUEST_OPTIONS);
 
   if (!response.output_parsed) throw new Error("Meal plan was not returned");
-  const normalizedPlan = normalizeMealPlanDates(response.output_parsed, input.days);
+  const normalizedPlan = normalizeMealPlanDates(response.output_parsed, { ...input, startDate });
   return { plan: reconcileMealPlanWithInventory(normalizedPlan, input.inventory), usage: response.usage, model: response.model };
 }

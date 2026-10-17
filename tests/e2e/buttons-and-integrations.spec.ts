@@ -185,6 +185,7 @@ test("UI использует ответ модели и отправляет и
   });
 
   await page.getByRole("button", { name: "Меню", exact: true }).click();
+  await page.getByLabel("Дата начала меню").fill("2026-10-20");
   await page.getByRole("button", { name: "Увеличить период" }).click();
   await page.getByRole("button", { name: "Увеличить порции" }).click();
   await page.getByPlaceholder("Например: больше овощей, без острого…").fill("без острого");
@@ -194,7 +195,7 @@ test("UI использует ответ модели и отправляет и
 
   await expect(page.getByText("Интеграционный суп", { exact: true })).toBeVisible();
   expect(requestBody).not.toBeNull();
-  expect(requestBody).toMatchObject({ days: 4, servings: 3, wish: "без острого" });
+  expect(requestBody).toMatchObject({ days: 4, startDate: "2026-10-20", servings: 3, wish: "без острого" });
   expect((requestBody as unknown as { cuisines: string[] }).cuisines).toContain("японская");
   expect((requestBody as unknown as { cuisines: string[] }).cuisines).toContain("перуанская");
   await page.getByPlaceholder(/Например: убери ужин/).fill("Замени суп на овощной и убери рис");
@@ -205,7 +206,7 @@ test("UI использует ответ модели и отправляет и
   expect(revisionBody).toMatchObject({ instruction: "Замени суп на овощной и убери рис", plan: { title: "Интеграционное меню" } });
   await page.getByRole("button", { name: "Сохранить меню" }).click();
   await expect(page.locator(".toast")).toContainText("Меню сохранено в базе");
-  expect(savedBody).toMatchObject({ mode: "inventory", request: { days: 4, servings: 3 }, plan: { title: "Исправленное меню" } });
+  expect(savedBody).toMatchObject({ mode: "inventory", request: { days: 4, startDate: "2026-10-20", servings: 3 }, plan: { title: "Исправленное меню" } });
 });
 
 test("персональные цели КБЖУ сохраняются и задают разные размеры порций", async ({ page }) => {

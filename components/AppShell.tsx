@@ -450,6 +450,7 @@ function MenuScreen({ inventory, setShopping, savedPlan, onPlanSaved, onRecipe, 
   const [revisionInstruction, setRevisionInstruction] = useState("");
   const [savedPlanId, setSavedPlanId] = useState<string | null>(null);
   const [days, setDays] = useState(3);
+  const [startDate, setStartDate] = useState(() => getBangkokDate());
   const [servings, setServings] = useState(2);
   const [cookingMinutes, setCookingMinutes] = useState(45);
   const [budget, setBudget] = useState(2000);
@@ -459,9 +460,12 @@ function MenuScreen({ inventory, setShopping, savedPlan, onPlanSaved, onRecipe, 
   const [nutritionProfiles, setNutritionProfiles] = useState<NutritionProfile[]>(() => defaultNutritionProfiles.map((profile) => ({ ...profile })));
   useEffect(() => {
     if (!savedPlan) return;
+    const today = getBangkokDate();
+    const savedStartDate = savedPlan.request.startDate || savedPlan.plan.dishes[0]?.date || today;
     setPlan(savedPlan.plan);
     setLastRequest(savedPlan.request);
     setMode(savedPlan.mode);
+    setStartDate(savedStartDate < today ? today : savedStartDate);
     setSavedPlanId(savedPlan.id);
     setGenerated(true);
   }, [savedPlan]);
@@ -482,6 +486,7 @@ function MenuScreen({ inventory, setShopping, savedPlan, onPlanSaved, onRecipe, 
       const requestData: MealPlanRequest = {
         mode,
         days,
+        startDate,
         servings,
         budgetThb: mode === "stores" ? budget : undefined,
         cuisines: cuisines.map((item) => item.toLowerCase()),
@@ -553,6 +558,7 @@ function MenuScreen({ inventory, setShopping, savedPlan, onPlanSaved, onRecipe, 
       {!generated ? <>
         <div className="segment"><button className={mode === "inventory" ? "active" : ""} onClick={() => setMode("inventory")}><Refrigerator size={18} />Из запасов</button><button className={mode === "stores" ? "active" : ""} onClick={() => setMode("stores")}><ShoppingBasket size={18} />Из магазинов</button></div>
         <div className="form-card">
+          <label className="form-row date-row"><span className="form-icon"><CalendarDays size={19} /></span><span className="form-copy"><small>Когда начнёте готовить</small><b>Начало меню</b></span><input aria-label="Дата начала меню" type="date" min={getBangkokDate()} value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label>
           <StepperRow label="Период" value={`${days} ${days === 1 ? "день" : days < 5 ? "дня" : "дней"}`} icon={<CalendarDays size={19} />} onDecrease={() => setDays((value) => Math.max(1, value - 1))} onIncrease={() => setDays((value) => Math.min(7, value + 1))} decreaseDisabled={days === 1} increaseDisabled={days === 7} />
           <StepperRow label="Порции" value={`${servings} ${servings === 1 ? "порция" : servings < 5 ? "порции" : "порций"}`} icon={<Utensils size={19} />} onDecrease={() => setServings((value) => Math.max(1, value - 1))} onIncrease={() => setServings((value) => Math.min(6, value + 1))} decreaseDisabled={servings === 1} increaseDisabled={servings === 6} />
           <StepperRow label="Время готовки" value={`до ${cookingMinutes} минут`} icon={<Clock3 size={19} />} onDecrease={() => setCookingMinutes((value) => Math.max(30, value - 15))} onIncrease={() => setCookingMinutes((value) => Math.min(60, value + 15))} decreaseDisabled={cookingMinutes === 30} increaseDisabled={cookingMinutes === 60} />
@@ -562,7 +568,7 @@ function MenuScreen({ inventory, setShopping, savedPlan, onPlanSaved, onRecipe, 
         <OptionSection title="Кухни"><div className="choice-wrap">{CUISINE_OPTIONS.map((cuisine) => <button key={cuisine} className={cuisines.includes(cuisine) ? "choice active" : "choice"} onClick={() => toggleCuisine(cuisine)}>{cuisines.includes(cuisine) && <Check size={15} />}{cuisine}</button>)}</div></OptionSection>
         <div className="nutrition-target-note"><b>КБЖУ для двоих</b><span>{nutritionProfiles.map((profile) => `${profile.name}: ${profile.dailyKcal} ккал`).join(" · ")}</span><small>Вес готовой порции модель рассчитает отдельно для каждого. Цели меняются в общих настройках.</small></div>
         <label className="wish-field"><span>Пожелание</span><textarea value={wish} onChange={(event) => setWish(event.target.value)} placeholder="Например: больше овощей, без острого…" /></label>
-        <button className="main-action" disabled={loading || meals.length === 0 || cuisines.length === 0} onClick={generate}>{loading ? <span className="spinner" /> : <Sparkles size={20} />}{loading ? "Составляем меню…" : "Составить меню"}</button>
+        <button className="main-action" disabled={loading || !startDate || startDate < getBangkokDate() || meals.length === 0 || cuisines.length === 0} onClick={generate}>{loading ? <span className="spinner" /> : <Sparkles size={20} />}{loading ? "Составляем меню…" : "Составить меню"}</button>
         <p className="fine-print">Результат можно изменить перед сохранением</p>
       </> : <GeneratedMenu plan={plan} revisionInstruction={revisionInstruction} onRevisionInstruction={setRevisionInstruction} onRevise={() => void revise()} revising={revising} onRecipe={onRecipe} onReset={() => { setGenerated(false); setSavedPlanId(null); }} onSave={() => void save()} saving={saving} saved={Boolean(savedPlanId)} mode={mode} />}
     </section>

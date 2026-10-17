@@ -1,4 +1,5 @@
 import type { GeneratedMealPlan, MealPlanRequest } from "@/lib/schemas/meal-plan";
+import { addDays, getBangkokDate } from "@/lib/meal-plan-dates";
 
 const templates = [
   ["breakfast", "Йогурт с манго и гранолой", 12],
@@ -13,15 +14,14 @@ const templates = [
 ] as const;
 
 export function createDemoMealPlan(input: MealPlanRequest): GeneratedMealPlan {
-  const start = new Date("2026-10-08T12:00:00Z");
+  const startDate = input.startDate || getBangkokDate();
   const dishes = Array.from({ length: input.days }, (_, dayIndex) => {
-    const date = new Date(start);
-    date.setUTCDate(start.getUTCDate() + dayIndex);
+    const date = addDays(startDate, dayIndex);
     return input.mealTypes.map((mealType, mealIndex) => {
       const matchingTemplates = templates.filter(([type]) => type === mealType);
       const matching = matchingTemplates[dayIndex % matchingTemplates.length] || templates[(dayIndex * 3 + mealIndex) % templates.length];
       return {
-        date: date.toISOString().slice(0, 10),
+        date,
         mealType,
         title: matching[1],
         cookingMinutes: matching[2],

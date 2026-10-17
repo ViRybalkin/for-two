@@ -131,6 +131,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .form-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .form-row small { color: var(--muted); font-size: .69rem; }
 .form-row b { font-size: .86rem; }
+.date-row input { width: 145px; min-width: 0; height: 42px; border: 1px solid var(--line); border-radius: 12px; padding: 0 9px; background: #f5f8f6; }
 .row-stepper { display: grid; grid-template-columns: 36px minmax(66px, auto) 36px; align-items: center; min-height: 40px; overflow: hidden; border: 1px solid var(--line); border-radius: 13px; background: #f5f8f6; }
 .row-stepper button { width: 36px; height: 40px; border: 0; background: transparent; color: var(--forest); display: grid; place-items: center; cursor: pointer; }
 .row-stepper button:not(:disabled):active { background: #e6ede8; }
