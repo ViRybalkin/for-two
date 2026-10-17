@@ -19,6 +19,7 @@ import {
   Minus,
   MoreHorizontal,
   Package,
+  Pencil,
   Plus,
   Refrigerator,
   Search,
@@ -47,10 +48,11 @@ type InventoryItem = {
   unit: "г" | "мл" | "шт";
   storage: Storage;
   expiry: string;
+  expiryDate?: string | null;
   icon: string;
   category?: ShoppingCategoryId;
 };
-type NewInventoryItem = InventoryItem & { expiryDate: string | null };
+type InventoryFormValue = Pick<InventoryItem, "name" | "quantity" | "unit" | "storage"> & { expiryDate: string | null };
 type ShoppingUnit = "g" | "ml" | "piece";
 type ShoppingItem = { id: string; name: string; detail: string; price: number; bought: boolean; store: "Tops" | "Makro"; url?: string | null; imageUrl?: string | null; purchasedQuantity?: number; purchasedUnit?: ShoppingUnit; category?: ShoppingCategoryId };
 type CatalogProduct = { store: "tops" | "makro"; originalName: string; packageText: string | null; priceThb: number | null; url: string; imageUrl: string | null; availability: string; checkedAt: string };
@@ -80,7 +82,8 @@ export function AppShell() {
   const [planLoading, setPlanLoading] = useState(true);
   const [localStateReady, setLocalStateReady] = useState(false);
   const [selectedDish, setSelectedDish] = useState<MealDish | null>(null);
-  const [sheet, setSheet] = useState<"add" | "settings" | "recipe" | "catalog" | null>(null);
+  const [selectedInventoryItem, setSelectedInventoryItem] = useState<InventoryItem | null>(null);
+  const [sheet, setSheet] = useState<"add" | "edit" | "settings" | "recipe" | "catalog" | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const generatingImages = useRef(new Set<string>());
 
@@ -173,6 +176,7 @@ export function AppShell() {
 
   const go = (next: Tab) => {
     setSheet(null);
+    setSelectedInventoryItem(null);
     setTab(next);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -207,7 +211,7 @@ export function AppShell() {
     <main className="site-shell">
       <div className="phone-surface">
         {tab === "today" && <TodayScreen savedPlan={savedPlan} inventory={inventory} loading={planLoading} onMenu={() => go("menu")} onInventory={() => go("inventory")} onRecipe={openRecipe} onAdd={() => setSheet("add")} onSettings={() => setSheet("settings")} />}
-        {tab === "inventory" && <InventoryScreen items={inventory} loading={inventoryLoading} setItems={setInventory} onAdd={() => setSheet("add")} notify={notify} />}
+        {tab === "inventory" && <InventoryScreen items={inventory} loading={inventoryLoading} setItems={setInventory} onAdd={() => setSheet("add")} onEdit={(item) => { setSelectedInventoryItem(item); setSheet("edit"); }} notify={notify} />}
         {tab === "menu" && <MenuScreen inventory={inventory} setShopping={setShopping} savedPlan={savedPlan} onPlanSaved={setSavedPlan} onRecipe={openRecipe} onShopping={() => go("shopping")} notify={notify} />}
         {tab === "shopping" && <ShoppingScreen items={shopping} loading={shoppingLoading} savedPlan={savedPlan} setItems={setShopping} setInventory={setInventory} notify={notify} onSearch={() => setSheet("catalog")} />}
         {tab === "more" && <MoreScreen savedPlan={savedPlan} shopping={shopping} onSettings={() => setSheet("settings")} />}
@@ -225,17 +229,49 @@ export function AppShell() {
         </nav>
       </div>
 
-      {sheet === "add" && <AddProductSheet onClose={() => setSheet(null)} onAdd={async (item) => {
+      {sheet === "add" && <InventoryProductSheet onClose={() => setSheet(null)} onSave={async (item) => {
         try {
           const response = await fetch("/api/inventory", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: item.name, quantity: item.quantity, unit: item.unit, storage: item.storage, expiryDate: item.expiryDate }) });
           const data = await response.json();
           if (!response.ok) throw new Error(data?.error?.message || "Не удалось сохранить продукт");
-          setInventory((old) => [{ ...item, id: data.id || item.id, category: data.category }, ...old]);
+          setInventory((old) => [{ ...item, id: data.id || crypto.randomUUID(), expiry: formatExpiryDate(item.expiryDate), icon: "🥬", category: data.category }, ...old]);
           setSheet(null);
           notify("Продукт сохранён в запасах");
           return true;
         } catch (error) {
           notify(error instanceof Error ? error.message : "Не удалось сохранить продукт");
+          return false;
+        }
+      }} />}
+      {sheet === "edit" && selectedInventoryItem && <InventoryProductSheet item={selectedInventoryItem} onClose={() => { setSheet(null); setSelectedInventoryItem(null); }} onSave={async (item) => {
+        try {
+          const response = await fetch(`/api/inventory/${selectedInventoryItem.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(item) });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data?.error?.message || "Не удалось сохранить изменения");
+          const updated = data.item || { ...selectedInventoryItem, ...item, expiry: formatExpiryDate(item.expiryDate) };
+          setInventory((old) => old.map((entry) => entry.id === selectedInventoryItem.id ? updated : entry));
+          setSheet(null);
+          setSelectedInventoryItem(null);
+          notify("Продукт обновлён");
+          return true;
+        } catch (error) {
+          notify(error instanceof Error ? error.message : "Не удалось сохранить изменения");
+          return false;
+        }
+      }} onDelete={async () => {
+        try {
+          const response = await fetch(`/api/inventory/${selectedInventoryItem.id}`, { method: "DELETE" });
+          if (!response.ok) {
+            const data = await response.json().catch(() => null);
+            throw new Error(data?.error?.message || "Не удалось удалить продукт");
+          }
+          setInventory((old) => old.filter((entry) => entry.id !== selectedInventoryItem.id));
+          setSheet(null);
+          setSelectedInventoryItem(null);
+          notify(`${selectedInventoryItem.name} удалён из запасов`);
+          return true;
+        } catch (error) {
+          notify(error instanceof Error ? error.message : "Не удалось удалить продукт");
           return false;
         }
       }} />}
@@ -346,28 +382,23 @@ function Metric({ value, label }: { value: string; label: string }) {
   return <div><strong>{value}</strong><span>{label}</span></div>;
 }
 
-function InventoryScreen({ items, loading, setItems, onAdd, notify }: { items: InventoryItem[]; loading: boolean; setItems: React.Dispatch<React.SetStateAction<InventoryItem[]>>; onAdd: () => void; notify: (text: string) => void }) {
+function InventoryScreen({ items, loading, setItems, onAdd, onEdit, notify }: { items: InventoryItem[]; loading: boolean; setItems: React.Dispatch<React.SetStateAction<InventoryItem[]>>; onAdd: () => void; onEdit: (item: InventoryItem) => void; notify: (text: string) => void }) {
   const [query, setQuery] = useState("");
   const [pendingId, setPendingId] = useState<string | null>(null);
   const visible = items.filter((item) => item.name.toLowerCase().includes(query.toLowerCase()));
   const groupedItems = groupProductsByCategory(visible);
-  const adjust = async (id: string, direction: number) => {
+  const saveQuantity = async (id: string, quantity: number) => {
     const item = items.find((entry) => entry.id === id);
     if (!item) return;
-    const step = item.unit === "шт" ? 1 : 50;
-    const delta = Math.max(-item.quantity, direction * step);
-    if (delta === 0) return;
-    const previousQuantity = item.quantity;
-    const optimisticQuantity = Math.max(0, item.quantity + delta);
+    if (!Number.isFinite(quantity) || quantity <= 0) return notify("Укажите количество больше нуля");
     setPendingId(id);
-    setItems((old) => old.map((entry) => entry.id === id ? { ...entry, quantity: optimisticQuantity } : entry));
     try {
-      const response = await fetch(`/api/inventory/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ delta }) });
+      const response = await fetch(`/api/inventory/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: item.name, quantity, unit: item.unit, storage: item.storage, expiryDate: item.expiryDate || null }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error?.message || "Не удалось изменить количество");
-      if (typeof data.quantity === "number") setItems((old) => old.map((entry) => entry.id === id ? { ...entry, quantity: data.quantity } : entry));
+      setItems((old) => old.map((entry) => entry.id === id ? (data.item || { ...entry, quantity }) : entry));
+      notify("Количество обновлено");
     } catch (error) {
-      setItems((old) => old.map((entry) => entry.id === id ? { ...entry, quantity: previousQuantity } : entry));
       notify(error instanceof Error ? error.message : "Не удалось изменить количество");
     } finally {
       setPendingId(null);
@@ -385,7 +416,8 @@ function InventoryScreen({ items, loading, setItems, onAdd, notify }: { items: I
           <div className="inventory-list">{category.items.map((item) => (
             <article className="inventory-item" key={item.id}>
               <span className="food-icon">{item.icon}</span>
-              <div className="item-main"><b>{item.name}</b><span>{item.storage} · {item.expiry}</span><div className="quantity-control"><button disabled={pendingId === item.id} onClick={() => void adjust(item.id, -1)} aria-label={`Уменьшить ${item.name}`}><Minus size={15} /></button><strong>{item.quantity} {item.unit}</strong><button disabled={pendingId === item.id} onClick={() => void adjust(item.id, 1)} aria-label={`Увеличить ${item.name}`}><Plus size={15} /></button></div></div>
+              <div className="item-main"><b>{item.name}</b><span>{item.storage} · {item.expiry}</span><InventoryQuantityEditor item={item} pending={pendingId === item.id} onSave={(quantity) => void saveQuantity(item.id, quantity)} /></div>
+              <button className="inventory-edit" type="button" onClick={() => onEdit(item)} aria-label={`Редактировать ${item.name}`}><Pencil size={17} /></button>
             </article>
           ))}</div>
         </section>)}
@@ -393,6 +425,17 @@ function InventoryScreen({ items, loading, setItems, onAdd, notify }: { items: I
       </div>
     </section>
   );
+}
+
+function InventoryQuantityEditor({ item, pending, onSave }: { item: InventoryItem; pending: boolean; onSave: (quantity: number) => void }) {
+  const [value, setValue] = useState(String(item.quantity));
+  useEffect(() => setValue(String(item.quantity)), [item.quantity]);
+  const quantity = Number(value);
+  const changed = Number.isFinite(quantity) && quantity > 0 && quantity !== item.quantity;
+  return <form className="quantity-editor" onSubmit={(event) => { event.preventDefault(); if (changed) onSave(quantity); }}>
+    <label><input aria-label={`Точное количество: ${item.name}`} type="number" min="0.01" max="1000000" step="0.01" inputMode="decimal" value={value} disabled={pending} onChange={(event) => setValue(event.target.value)} /><b>{item.unit}</b></label>
+    <button type="submit" disabled={pending || !changed} aria-label={`Сохранить количество: ${item.name}`}>{pending ? <span className="spinner" /> : <Check size={16} />}</button>
+  </form>;
 }
 
 function MenuScreen({ inventory, setShopping, savedPlan, onPlanSaved, onRecipe, onShopping, notify }: { inventory: InventoryItem[]; setShopping: React.Dispatch<React.SetStateAction<ShoppingItem[]>>; savedPlan: SavedMealPlan | null; onPlanSaved: (plan: SavedMealPlan) => void; onRecipe: (dish: MealDish) => void; onShopping: () => void; notify: (text: string) => void }) {
@@ -676,22 +719,29 @@ function StepperRow({ label, value, icon, onDecrease, onIncrease, decreaseDisabl
 }
 function OptionSection({ title, children }: { title: string; children: React.ReactNode }) { return <div className="option-section"><h3>{title}</h3>{children}</div>; }
 
-function AddProductSheet({ onClose, onAdd }: { onClose: () => void; onAdd: (item: NewInventoryItem) => Promise<boolean> }) {
+function InventoryProductSheet({ item, onClose, onSave, onDelete }: { item?: InventoryItem; onClose: () => void; onSave: (value: InventoryFormValue) => Promise<boolean>; onDelete?: () => Promise<boolean> }) {
   const [saving, setSaving] = useState(false);
-  const name = useRef<HTMLInputElement>(null);
-  const quantity = useRef<HTMLInputElement>(null);
-  const unit = useRef<HTMLSelectElement>(null);
-  const storage = useRef<HTMLSelectElement>(null);
-  const expiryDate = useRef<HTMLInputElement>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [name, setName] = useState(item?.name || "");
+  const [quantity, setQuantity] = useState(String(item?.quantity || ""));
+  const [unit, setUnit] = useState<InventoryItem["unit"]>(item?.unit || "г");
+  const [storage, setStorage] = useState<Storage>(item?.storage || "Холодильник");
+  const [expiryDate, setExpiryDate] = useState(item?.expiryDate || "");
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    const selectedExpiryDate = expiryDate.current?.value || null;
-    const saved = await onAdd({ id: crypto.randomUUID(), name: name.current?.value || "Новый продукт", quantity: Number(quantity.current?.value || 1), unit: (unit.current?.value || "г") as InventoryItem["unit"], storage: (storage.current?.value || "Холодильник") as Storage, expiryDate: selectedExpiryDate, expiry: formatExpiryDate(selectedExpiryDate), icon: "🥬" });
+    const saved = await onSave({ name: name.trim(), quantity: Number(quantity), unit, storage, expiryDate: expiryDate || null });
     if (!saved) setSaving(false);
   };
-  return <div className="overlay" role="dialog" aria-modal="true"><div className="sheet"><div className="sheet-handle" /><div className="sheet-title"><div><p className="eyebrow">НОВАЯ ПОЗИЦИЯ</p><h2>Добавить продукт</h2></div><button className="icon-button" onClick={onClose} aria-label="Закрыть"><X /></button></div>
-    <form onSubmit={submit} className="product-form"><label><span>Название</span><input ref={name} required placeholder="Например, авокадо" autoFocus disabled={saving} /></label><div className="form-split"><label><span>Количество</span><input ref={quantity} type="number" min="0.01" step="0.01" required placeholder="500" disabled={saving} /></label><label><span>Единица</span><select ref={unit} defaultValue="г" disabled={saving}><option>г</option><option>мл</option><option>шт</option></select></label></div><label><span>Где хранится</span><select ref={storage} defaultValue="Холодильник" disabled={saving}><option>Холодильник</option><option>Морозильник</option><option>Кладовая</option></select></label><label><span>Срок годности <small>необязательно</small></span><input ref={expiryDate} type="date" disabled={saving} /></label><button className="main-action" type="submit" disabled={saving}>{saving ? "Сохраняем…" : "Добавить в запасы"}</button></form>
+  const remove = async () => {
+    if (!onDelete || !window.confirm(`Удалить «${item?.name}» из запасов?`)) return;
+    setDeleting(true);
+    const deleted = await onDelete();
+    if (!deleted) setDeleting(false);
+  };
+  const pending = saving || deleting;
+  return <div className="overlay" role="dialog" aria-modal="true"><div className="sheet"><div className="sheet-handle" /><div className="sheet-title"><div><p className="eyebrow">{item ? "ЗАПАСЫ" : "НОВАЯ ПОЗИЦИЯ"}</p><h2>{item ? "Редактировать продукт" : "Добавить продукт"}</h2></div><button className="icon-button" onClick={onClose} aria-label="Закрыть" disabled={pending}><X /></button></div>
+    <form onSubmit={submit} className="product-form"><label><span>Название</span><input required placeholder="Например, авокадо" autoFocus={!item} disabled={pending} value={name} onChange={(event) => setName(event.target.value)} /></label><div className="form-split"><label><span>Количество</span><input type="number" min="0.01" max="1000000" step="0.01" inputMode="decimal" required placeholder="500" disabled={pending} value={quantity} onChange={(event) => setQuantity(event.target.value)} /></label><label><span>Единица</span><select value={unit} disabled={pending} onChange={(event) => setUnit(event.target.value as InventoryItem["unit"])}><option>г</option><option>мл</option><option>шт</option></select></label></div><label><span>Где хранится</span><select value={storage} disabled={pending} onChange={(event) => setStorage(event.target.value as Storage)}><option>Холодильник</option><option>Морозильник</option><option>Кладовая</option></select></label><label><span>Срок годности <small>необязательно</small></span><input type="date" disabled={pending} value={expiryDate} onChange={(event) => setExpiryDate(event.target.value)} /></label><button className="main-action" type="submit" disabled={pending || !name.trim() || !Number.isFinite(Number(quantity)) || Number(quantity) <= 0}>{saving ? "Сохраняем…" : item ? "Сохранить изменения" : "Добавить в запасы"}</button>{item && <button className="danger-action" type="button" disabled={pending} onClick={() => void remove()}><Trash2 size={18} />{deleting ? "Удаляем…" : "Удалить продукт"}</button>}</form>
   </div></div>;
 }
 

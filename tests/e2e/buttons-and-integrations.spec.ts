@@ -85,10 +85,11 @@ test("рабочие элементы управления дают наблюд
   await expect(page.getByRole("heading", { name: "Запасы" })).toBeVisible();
 
   const rice = page.getByText("Рис", { exact: true }).locator("xpath=ancestor::article");
-  const quantity = rice.locator(".quantity-control strong");
-  await expect(quantity).toContainText("600 г");
-  await rice.getByRole("button", { name: "Увеличить Рис" }).click();
-  await expect(quantity).toContainText("650 г");
+  const quantity = rice.getByRole("spinbutton", { name: "Точное количество: Рис" });
+  await expect(quantity).toHaveValue("600");
+  await quantity.fill("650");
+  await rice.getByRole("button", { name: "Сохранить количество: Рис" }).click();
+  await expect(quantity).toHaveValue("650");
 
   await page.getByRole("button", { name: "Меню", exact: true }).click();
   await page.getByRole("button", { name: "Параметры" }).click();
@@ -431,7 +432,7 @@ test("купленные товары переходят в запасы, а н�
   await expect(page.getByRole("status")).toContainText("1 товаров добавлено в запасы");
   await page.getByRole("button", { name: "Запасы", exact: true }).click();
   const milk = page.getByText("Молоко", { exact: true }).locator("xpath=ancestor::article");
-  await expect(milk).toContainText("1500 мл");
+  await expect(milk.getByRole("spinbutton", { name: "Точное количество: Молоко" })).toHaveValue("1500");
 });
 
 test("товар можно удалить из покупок, если его не купили", async ({ page }) => {
@@ -470,9 +471,10 @@ test("товар из магазина показывает изображени
   await expect(item.getByRole("link", { name: "Открыть на сайте Makro" })).toHaveAttribute("href", "https://www.makro.pro/p/jasmine-rice");
 });
 
-test("добавление продукта передаёт выбранные единицу и место хранения", async ({ page }) => {
+test("запасы можно свободно изменять, редактировать и удалять", async ({ page }) => {
   let requestBody: Record<string, unknown> | null = null;
-  let patchUrl = "";
+  const patchBodies: Record<string, unknown>[] = [];
+  let deleted = false;
   await page.route("**/api/inventory", async (route) => {
     if (route.request().method() === "POST") {
       requestBody = route.request().postDataJSON();
@@ -482,8 +484,14 @@ test("добавление продукта передаёт выбранные 
     await route.continue();
   });
   await page.route("**/api/inventory/test-id", async (route) => {
-    patchUrl = route.request().url();
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", quantity: 800 }) });
+    if (route.request().method() === "DELETE") {
+      deleted = true;
+      await route.fulfill({ status: 204, body: "" });
+      return;
+    }
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    patchBodies.push(body);
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", item: { id: "test-id", ...body, expiry: body.expiryDate ? "до 12 окт.": "срок не указан", icon: "🥬", category: "dairy" } }) });
   });
 
   await page.getByRole("button", { name: "Добавить продукты" }).click();
@@ -498,11 +506,29 @@ test("добавление продукта передаёт выбранные 
   expect(requestBody).toMatchObject({ name: "Молоко", quantity: 750, unit: "мл", storage: "Морозильник", expiryDate: "2026-10-10" });
 
   await page.getByRole("button", { name: "Запасы", exact: true }).click();
-  const milk = page.getByText("Молоко", { exact: true }).locator("xpath=ancestor::article");
-  await expect(milk).toContainText("до 10 окт.");
-  await milk.getByRole("button", { name: "Увеличить Молоко" }).click();
-  await expect(milk.locator(".quantity-control strong")).toHaveText("800 мл");
-  expect(patchUrl).toContain("/api/inventory/test-id");
+  let milk = page.getByText("Молоко", { exact: true }).locator("xpath=ancestor::article");
+  const exactQuantity = milk.getByRole("spinbutton", { name: "Точное количество: Молоко" });
+  await exactQuantity.fill("812.5");
+  await milk.getByRole("button", { name: "Сохранить количество: Молоко" }).click();
+  await expect(exactQuantity).toHaveValue("812.5");
+  expect(patchBodies[0]).toMatchObject({ name: "Молоко", quantity: 812.5, unit: "мл", storage: "Морозильник" });
+
+  await milk.getByRole("button", { name: "Редактировать Молоко" }).click();
+  await expect(page.getByRole("heading", { name: "Редактировать продукт" })).toBeVisible();
+  await page.getByLabel("Название").fill("Молоко кокосовое");
+  await page.getByLabel("Количество", { exact: true }).fill("640.25");
+  await page.getByLabel("Где хранится").selectOption("Холодильник");
+  await page.getByLabel(/Срок годности/).fill("2026-10-12");
+  await page.getByRole("button", { name: "Сохранить изменения" }).click();
+  expect(patchBodies[1]).toMatchObject({ name: "Молоко кокосовое", quantity: 640.25, storage: "Холодильник", expiryDate: "2026-10-12" });
+  milk = page.getByText("Молоко кокосовое", { exact: true }).locator("xpath=ancestor::article");
+  await expect(milk).toContainText("Холодильник · до 12 окт.");
+
+  await milk.getByRole("button", { name: "Редактировать Молоко кокосовое" }).click();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Удалить продукт" }).click();
+  expect(deleted).toBe(true);
+  await expect(page.getByText("Молоко кокосовое", { exact: true })).toBeHidden();
 });
 
 test("ошибка API не выдаётся за успешное сохранение продукта", async ({ page }) => {

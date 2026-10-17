@@ -13,10 +13,18 @@ export const inventoryInputSchema = z.object({
   expiryDate: z.string().date().nullable().optional()
 });
 
+export type InventoryInput = z.infer<typeof inventoryInputSchema>;
+
 const unitToDb = { "г": "g", "мл": "ml", "шт": "piece" } as const;
 const unitFromDb = { g: "г", ml: "мл", piece: "шт" } as const;
 const storageToDb = { "Холодильник": "fridge", "Морозильник": "freezer", "Кладовая": "pantry" } as const;
 const storageFromDb = { fridge: "Холодильник", freezer: "Морозильник", pantry: "Кладовая" } as const;
+
+function formatExpiryDate(expiryDate: string | null) {
+  return expiryDate
+    ? `до ${new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short" }).format(new Date(`${expiryDate}T12:00:00Z`))}`
+    : "срок не указан";
+}
 
 export function isSupabaseConfigured() {
   return isSupabaseServerConfigured();
@@ -55,9 +63,7 @@ export async function listInventory() {
 
   return (data || []).map((row) => {
     const product = Array.isArray(row.products) ? row.products[0] : row.products;
-    const expiry = row.nearest_expiry_date
-      ? `до ${new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short" }).format(new Date(`${row.nearest_expiry_date}T12:00:00Z`))}`
-      : "срок не указан";
+    const expiryDate = row.nearest_expiry_date || null;
     const name = product?.display_name_ru || "Продукт";
     return {
       id: row.id,
@@ -65,7 +71,8 @@ export async function listInventory() {
       quantity: Number(row.quantity_base),
       unit: unitFromDb[row.base_unit as keyof typeof unitFromDb],
       storage: storageFromDb[row.storage_location as keyof typeof storageFromDb],
-      expiry,
+      expiryDate,
+      expiry: formatExpiryDate(expiryDate),
       icon: "🥬",
       category: categoryByItem.get(row.id) || getShoppingCategory(name)
     };
@@ -101,6 +108,84 @@ export async function adjustInventoryItem(id: string, delta: number) {
   });
   if (error) throw error;
   return Number(data);
+}
+
+export async function updateInventoryItem(id: string, input: InventoryInput) {
+  const client = getSupabaseAdmin();
+  const { data: current, error: currentError } = await client
+    .from("inventory_items")
+    .select("id,product_id,quantity_base,base_unit,products(display_name_ru)")
+    .eq("id", id)
+    .single();
+  if (currentError) throw currentError;
+
+  const currentProduct = Array.isArray(current.products) ? current.products[0] : current.products;
+  const currentName = currentProduct?.display_name_ru || "";
+  const nextUnit = unitToDb[input.unit];
+  let productId = current.product_id as string;
+
+  if (currentName.trim().toLocaleLowerCase("ru-RU") !== input.name.trim().toLocaleLowerCase("ru-RU") || current.base_unit !== nextUnit) {
+    const { data: product, error: productError } = await client
+      .from("products")
+      .upsert({
+        normalized_name: input.name.trim().toLocaleLowerCase("ru-RU"),
+        display_name_ru: input.name.trim(),
+        default_unit: nextUnit
+      }, { onConflict: "normalized_name,default_unit" })
+      .select("id")
+      .single();
+    if (productError) throw productError;
+    productId = product.id as string;
+  }
+
+  const { data: movement } = await client
+    .from("inventory_movements")
+    .select("metadata")
+    .eq("inventory_item_id", id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const savedCategory = movement?.metadata && typeof movement.metadata === "object" && "category" in movement.metadata
+    ? (movement.metadata as { category?: unknown }).category
+    : undefined;
+  const category = currentName.trim().toLocaleLowerCase("ru-RU") === input.name.trim().toLocaleLowerCase("ru-RU") && isShoppingCategoryId(savedCategory)
+    ? savedCategory
+    : (await classifyProductCategories([input.name]))[0];
+
+  const { error: updateError } = await client
+    .from("inventory_items")
+    .update({
+      product_id: productId,
+      quantity_base: input.quantity,
+      base_unit: nextUnit,
+      storage_location: storageToDb[input.storage],
+      nearest_expiry_date: input.expiryDate || null,
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", id);
+  if (updateError) throw updateError;
+
+  const { error: movementError } = await client.from("inventory_movements").insert({
+    inventory_item_id: id,
+    operation: "correct",
+    quantity_delta: input.quantity - Number(current.quantity_base),
+    idempotency_key: crypto.randomUUID(),
+    metadata: { category }
+  });
+  if (movementError) console.error("Inventory edit movement could not be recorded", movementError);
+
+  const expiryDate = input.expiryDate || null;
+  return {
+    id,
+    name: input.name.trim(),
+    quantity: input.quantity,
+    unit: input.unit,
+    storage: input.storage,
+    expiryDate,
+    expiry: formatExpiryDate(expiryDate),
+    icon: "🥬",
+    category
+  };
 }
 
 export async function deleteInventoryItem(id: string) {
