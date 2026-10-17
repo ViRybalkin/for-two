@@ -42,7 +42,7 @@ export async function classifyProductCategories(names: string[]) {
         }
       ],
       text: { format: zodTextFormat(shoppingCategoryClassificationSchema, "shopping_categories") }
-    }, { timeout: 20_000, maxRetries: 0 });
+    }, { timeout: 12_000, maxRetries: 0 });
 
     if (!response.output_parsed) throw new Error("Shopping categories were not returned");
     return mergeCategoryAssignments(names, response.output_parsed.items);

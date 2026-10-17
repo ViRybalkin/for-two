@@ -32,7 +32,7 @@ describe("shared product category classifier", () => {
       store: false,
       input: expect.arrayContaining([expect.objectContaining({ role: "user" })]),
       text: { format: expect.objectContaining({ type: "json_schema" }) }
-    }), { timeout: 20_000, maxRetries: 0 });
+    }), { timeout: 12_000, maxRetries: 0 });
   });
 
   it("fills a missing model assignment with the deterministic fallback", () => {

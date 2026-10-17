@@ -158,7 +158,7 @@ async function searchOfficialCatalogChunk(names: string[], store: "tops" | "makr
       }
     ],
     text: { format: zodTextFormat(catalogBatchResultSchema, "catalog_batch_search") }
-  });
+  }, { timeout: 12_000, maxRetries: 0 });
 
   if (!response.output_parsed) return [];
   const searchImages = extractSearchResultImages(response.output);

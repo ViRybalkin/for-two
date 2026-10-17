@@ -255,14 +255,6 @@ export async function createShoppingItemsForMealPlan(mealPlanId: string, plan: G
   }
   const productsToSave = [...combined.values()];
   const productNames = productsToSave.map((item) => item.name);
-  const [catalogMatches, categories] = await Promise.all([
-    searchOfficialCatalogBatch(productNames, "makro").catch((error) => {
-      console.error("Catalog batch enrichment failed", error);
-      return [];
-    }),
-    classifyProductCategories(productNames)
-  ]);
-  const catalogByName = new Map(catalogMatches.map((product) => [product.queryName.trim().toLocaleLowerCase("ru"), product]));
   const { data: products, error: productError } = await client
     .from("products")
     .upsert(productsToSave.map((item) => ({ normalized_name: item.normalizedName, display_name_ru: item.name, default_unit: item.unit })), { onConflict: "normalized_name,default_unit" })
@@ -271,32 +263,69 @@ export async function createShoppingItemsForMealPlan(mealPlanId: string, plan: G
 
   const productByKey = new Map((products || []).map((product) => [`${product.normalized_name}:${product.default_unit}`, product.id]));
   const estimatedPrice = Math.round(plan.summary.estimatedTotalThb / productsToSave.length);
-  const shoppingItems = productsToSave.map((item, index) => {
+  const shoppingItems = productsToSave.map((item) => {
     const productId = productByKey.get(`${item.normalizedName}:${item.unit}`);
     if (!productId) throw new Error(`Product was not persisted: ${item.normalizedName}`);
-    const catalog = catalogByName.get(item.name.toLocaleLowerCase("ru"));
-    const purchase = buildCatalogPurchase(item.quantity, item.unit, catalog?.packageText || null);
+    const purchase = buildCatalogPurchase(item.quantity, item.unit, null);
     return {
       shopping_list_id: listId,
       product_id: productId,
       planned_packages: purchase.packages,
-      estimated_price_thb: catalog?.priceThb === null || catalog?.priceThb === undefined
-        ? estimatedPrice
-        : Math.round(catalog.priceThb * purchase.packages),
+      estimated_price_thb: estimatedPrice,
       purchased: false,
       department: encodeShoppingMetadata({
         detail: purchase.detail,
         requiredDetail: purchase.requiredDetail,
         purchasedQuantity: purchase.purchasedQuantity,
         purchasedUnit: purchase.purchasedUnit,
-        url: catalog?.url || null,
-        imageUrl: catalog?.imageUrl || null,
-        category: categories[index]
+        url: null,
+        imageUrl: null,
+        category: getShoppingCategory(item.name)
       })
     };
   });
-  const { error: itemError } = await client.from("shopping_list_items").insert(shoppingItems);
+  const { data: persistedItems, error: itemError } = await client.from("shopping_list_items").insert(shoppingItems).select("id,product_id");
   if (itemError) throw itemError;
+
+  const shoppingItemIdByProduct = new Map((persistedItems || []).map((item) => [item.product_id, item.id]));
+  try {
+    const [catalogMatches, categories] = await Promise.all([
+      searchOfficialCatalogBatch(productNames, "makro").catch((error) => {
+        console.error("Catalog batch enrichment failed", error);
+        return [];
+      }),
+      classifyProductCategories(productNames)
+    ]);
+    const catalogByName = new Map(catalogMatches.map((product) => [product.queryName.trim().toLocaleLowerCase("ru"), product]));
+    await Promise.all(productsToSave.map(async (item, index) => {
+      const productId = productByKey.get(`${item.normalizedName}:${item.unit}`);
+      const shoppingItemId = productId ? shoppingItemIdByProduct.get(productId) : undefined;
+      if (!shoppingItemId) return;
+      const catalog = catalogByName.get(item.name.toLocaleLowerCase("ru"));
+      const purchase = buildCatalogPurchase(item.quantity, item.unit, catalog?.packageText || null);
+      const { error } = await client
+        .from("shopping_list_items")
+        .update({
+          planned_packages: purchase.packages,
+          estimated_price_thb: catalog?.priceThb === null || catalog?.priceThb === undefined
+            ? estimatedPrice
+            : Math.round(catalog.priceThb * purchase.packages),
+          department: encodeShoppingMetadata({
+            detail: purchase.detail,
+            requiredDetail: purchase.requiredDetail,
+            purchasedQuantity: purchase.purchasedQuantity,
+            purchasedUnit: purchase.purchasedUnit,
+            url: catalog?.url || null,
+            imageUrl: catalog?.imageUrl || null,
+            category: categories[index]
+          })
+        })
+        .eq("id", shoppingItemId);
+      if (error) throw error;
+    }));
+  } catch (error) {
+    console.error("Shopping list enrichment failed; keeping persisted fallback items", error);
+  }
 
   return listShoppingItems();
 }
