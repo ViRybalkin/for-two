@@ -38,6 +38,7 @@ import { getBangkokDate } from "@/lib/meal-plan-dates";
 import { getMealDishKey } from "@/lib/meal-plan-completion";
 import { CUISINE_OPTIONS } from "@/lib/cuisines";
 import { groupProductsByCategory, type ShoppingCategoryId } from "@/lib/shopping-categories";
+import { defaultNutritionProfiles, type NutritionProfile } from "@/lib/nutrition";
 
 type Tab = "today" | "inventory" | "menu" | "shopping" | "more";
 type Storage = "Холодильник" | "Морозильник" | "Кладовая";
@@ -455,6 +456,7 @@ function MenuScreen({ inventory, setShopping, savedPlan, onPlanSaved, onRecipe, 
   const [meals, setMeals] = useState(["Завтрак", "Обед", "Ужин"]);
   const [cuisines, setCuisines] = useState(["Тайская", "Средиземноморская"]);
   const [wish, setWish] = useState("");
+  const [nutritionProfiles, setNutritionProfiles] = useState<NutritionProfile[]>(() => defaultNutritionProfiles.map((profile) => ({ ...profile })));
   useEffect(() => {
     if (!savedPlan) return;
     setPlan(savedPlan.plan);
@@ -463,6 +465,14 @@ function MenuScreen({ inventory, setShopping, savedPlan, onPlanSaved, onRecipe, 
     setSavedPlanId(savedPlan.id);
     setGenerated(true);
   }, [savedPlan]);
+  useEffect(() => {
+    void fetch("/api/settings")
+      .then((response) => response.ok ? response.json() : null)
+      .then((data) => {
+        if (Array.isArray(data?.settings?.nutritionProfiles) && data.settings.nutritionProfiles.length === 2) setNutritionProfiles(data.settings.nutritionProfiles);
+      })
+      .catch(() => null);
+  }, []);
   const toggleMeal = (meal: string) => setMeals((old) => old.includes(meal) ? old.filter((item) => item !== meal) : [...old, meal]);
   const toggleCuisine = (cuisine: string) => setCuisines((old) => old.includes(cuisine) ? old.filter((item) => item !== cuisine) : [...old, cuisine]);
   const generate = async () => {
@@ -477,6 +487,7 @@ function MenuScreen({ inventory, setShopping, savedPlan, onPlanSaved, onRecipe, 
         cuisines: cuisines.map((item) => item.toLowerCase()),
         mealTypes: meals.map((meal) => mealTypeMap[meal as keyof typeof mealTypeMap]),
         inventory: inventory.map(({ name, quantity, unit, expiry }) => ({ name, quantity, unit, expiry })),
+        nutritionProfiles,
         wish: wish.trim() || undefined
       };
       const response = await fetch("/api/meal-plans/generate", {
@@ -549,6 +560,7 @@ function MenuScreen({ inventory, setShopping, savedPlan, onPlanSaved, onRecipe, 
         </div>
         <OptionSection title="Приёмы пищи"><div className="choice-wrap">{["Завтрак", "Обед", "Ужин", "Перекус"].map((meal) => <button key={meal} className={meals.includes(meal) ? "choice active" : "choice"} onClick={() => toggleMeal(meal)}>{meals.includes(meal) && <Check size={15} />}{meal}</button>)}</div></OptionSection>
         <OptionSection title="Кухни"><div className="choice-wrap">{CUISINE_OPTIONS.map((cuisine) => <button key={cuisine} className={cuisines.includes(cuisine) ? "choice active" : "choice"} onClick={() => toggleCuisine(cuisine)}>{cuisines.includes(cuisine) && <Check size={15} />}{cuisine}</button>)}</div></OptionSection>
+        <div className="nutrition-target-note"><b>КБЖУ для двоих</b><span>{nutritionProfiles.map((profile) => `${profile.name}: ${profile.dailyKcal} ккал`).join(" · ")}</span><small>Вес готовой порции модель рассчитает отдельно для каждого. Цели меняются в общих настройках.</small></div>
         <label className="wish-field"><span>Пожелание</span><textarea value={wish} onChange={(event) => setWish(event.target.value)} placeholder="Например: больше овощей, без острого…" /></label>
         <button className="main-action" disabled={loading || meals.length === 0 || cuisines.length === 0} onClick={generate}>{loading ? <span className="spinner" /> : <Sparkles size={20} />}{loading ? "Составляем меню…" : "Составить меню"}</button>
         <p className="fine-print">Результат можно изменить перед сохранением</p>
@@ -788,6 +800,7 @@ function SettingsSheet({ onClose, notify }: { onClose: () => void; notify: (text
   const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard">("medium");
   const [equipment, setEquipment] = useState(["Плита", "Аэрогриль", "Рисоварка", "Микроволновка"]);
   const [wish, setWish] = useState("Больше овощей. Ужин не слишком острый.");
+  const [nutritionProfiles, setNutritionProfiles] = useState<NutritionProfile[]>(() => defaultNutritionProfiles.map((profile) => ({ ...profile })));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const toggleEquipment = (item: string) => setEquipment((old) => old.includes(item) ? old.filter((value) => value !== item) : [...old, item]);
@@ -801,12 +814,13 @@ function SettingsSheet({ onClose, notify }: { onClose: () => void; notify: (text
       setBatch(data.settings.batchCookingEnabled);
       setEquipment(data.settings.equipment);
       setWish(data.settings.wish);
+      setNutritionProfiles(data.settings.nutritionProfiles);
     }).catch((error) => notify(error instanceof Error ? error.message : "Не удалось загрузить настройки")).finally(() => setLoading(false));
   }, []);
   const save = async () => {
     setSaving(true);
     try {
-      const response = await fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ maxCookingMinutes, difficulty, allowRepeats: repeats, batchCookingEnabled: batch, equipment, wish }) });
+      const response = await fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ maxCookingMinutes, difficulty, allowRepeats: repeats, batchCookingEnabled: batch, equipment, wish, nutritionProfiles }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error?.message || "Не удалось сохранить настройки");
       notify("Настройки сохранены в базе");
@@ -817,10 +831,13 @@ function SettingsSheet({ onClose, notify }: { onClose: () => void; notify: (text
       setSaving(false);
     }
   };
+  const updateNutritionProfile = (index: number, patch: Partial<NutritionProfile>) => setNutritionProfiles((current) => current.map((profile, profileIndex) => profileIndex === index ? { ...profile, ...patch } : profile));
+  const nutritionProfilesValid = nutritionProfiles.every((profile) => profile.name.trim() && profile.weightKg >= 35 && profile.weightKg <= 250 && profile.dailyKcal >= 1200 && profile.dailyKcal <= 5000);
   return <div className="overlay" role="dialog" aria-modal="true"><div className="sheet tall"><div className="sheet-handle" /><div className="sheet-title"><div><p className="eyebrow">ПО УМОЛЧАНИЮ</p><h2>Настройки меню</h2></div><button className="icon-button" onClick={onClose} aria-label="Закрыть"><X /></button></div>
     {loading ? <div className="catalog-message">Загружаем настройки…</div> : <><div className="settings-group"><label><span><b>Время приготовления</b><small>Для обычного дня</small></span><select value={maxCookingMinutes} onChange={(event) => setMaxCookingMinutes(Number(event.target.value))}><option value="30">до 30 минут</option><option value="45">до 45 минут</option><option value="60">до 60 минут</option></select></label><label><span><b>Сложность</b><small>Максимальный уровень</small></span><select value={difficulty} onChange={(event) => setDifficulty(event.target.value as typeof difficulty)}><option value="easy">Легко</option><option value="medium">Средне</option><option value="hard">Сложно</option></select></label><label><span><b>Разрешить повторы</b><small>Повторять удачные блюда</small></span><Toggle label="Разрешить повторы" checked={repeats} setChecked={setRepeats} /></label><label><span><b>Готовить на несколько дней</b><small>Учитывать остатки порций</small></span><Toggle label="Готовить на несколько дней" checked={batch} setChecked={setBatch} /></label></div>
+    <OptionSection title="Цели КБЖУ"><div className="nutrition-profiles">{nutritionProfiles.map((profile, index) => <div className="nutrition-profile" key={index}><b>{index === 0 ? "Человек 1" : "Человек 2"}</b><label><span>Имя</span><input value={profile.name} maxLength={40} onChange={(event) => updateNutritionProfile(index, { name: event.target.value })} /></label><div><label><span>Вес, кг</span><input type="number" min="35" max="250" step="0.1" inputMode="decimal" value={profile.weightKg} onChange={(event) => updateNutritionProfile(index, { weightKg: Number(event.target.value) })} /></label><label><span>Цель, ккал/день</span><input type="number" min="1200" max="5000" step="50" inputMode="numeric" value={profile.dailyKcal} onChange={(event) => updateNutritionProfile(index, { dailyKcal: Number(event.target.value) })} /></label></div></div>)}</div><p className="settings-hint">Белки, жиры, углеводы и клетчатка рассчитываются автоматически по рекомендациям EFSA и ВОЗ.</p></OptionSection>
     <OptionSection title="Доступная техника"><div className="choice-wrap">{["Плита", "Аэрогриль", "Рисоварка", "Микроволновка", "Блендер"].map((item) => <button key={item} className={equipment.includes(item) ? "choice active" : "choice"} onClick={() => toggleEquipment(item)}>{equipment.includes(item) && <Check size={15} />}{item}</button>)}</div></OptionSection>
-    <label className="wish-field"><span>Постоянные пожелания</span><textarea value={wish} onChange={(event) => setWish(event.target.value)} /></label><button className="main-action" disabled={saving} onClick={() => void save()}>{saving ? "Сохраняем…" : "Сохранить настройки"}</button></>}
+    <label className="wish-field"><span>Постоянные пожелания</span><textarea value={wish} onChange={(event) => setWish(event.target.value)} /></label><button className="main-action" disabled={saving || !nutritionProfilesValid} onClick={() => void save()}>{saving ? "Сохраняем…" : "Сохранить настройки"}</button></>}
   </div></div>;
 }
 
@@ -836,6 +853,7 @@ function RecipeView({ dish, completed, onComplete, onClose }: { dish: MealDish; 
   return <div className="full-overlay" role="dialog" aria-modal="true" aria-label={`Рецепт ${dish.title}`}><article className="recipe-view"><div className="recipe-photo">{dish.imageUrl ? <img className="meal-photo" src={dish.imageUrl} alt={dish.title} /> : <div className="meal-placeholder recipe-placeholder"><CookingPot size={82} /><span>{dish.imageStatus === "processing" ? "Создаём изображение…" : dish.title}</span></div>}<button className="round-glass back" onClick={onClose} aria-label="Закрыть рецепт"><ChevronLeft /></button></div>
       <div className="recipe-body"><p className="eyebrow">{mealNames[dish.mealType]} · {dish.date}</p><h1>{dish.title}</h1><p className="recipe-lead">Рецепт из сохранённого меню с точными ингредиентами и пошаговым приготовлением.</p><div className="recipe-facts"><span><Clock3 />{dish.cookingMinutes} мин</span><span><SlidersHorizontal />{difficultyNames[dish.difficulty]}</span><span><CircleDollarSign />≈ {Math.round(dish.estimatedCostThb / dish.servings)} ฿/порция</span></div>
       <div className="nutrition-row"><Metric value={`${Math.round(dish.nutritionPerServing.kcal)}`} label="ккал/порция" /><Metric value={`${Math.round(dish.nutritionPerServing.proteinG)} г`} label="белки" /><Metric value={`${Math.round(dish.nutritionPerServing.fatG)} г`} label="жиры" /><Metric value={`${Math.round(dish.nutritionPerServing.carbsG)} г`} label="углеводы" /></div>
+      {dish.portions?.length === 2 && <section className="personal-portions" aria-label="Персональные порции"><h2>Размер порций</h2><p>Примерный вес готового блюда — делите визуально, взвешивать не обязательно.</p><div>{dish.portions.map((portion, index) => <article key={`${portion.personName}-${index}`}><header><b>{portion.personName}</b><strong>≈ {Math.round(portion.approximateWeightG)} г</strong></header><span>{Math.round(portion.nutrition.kcal)} ккал</span><span>Б {Math.round(portion.nutrition.proteinG)} г</span><span>Ж {Math.round(portion.nutrition.fatG)} г</span><span>У {Math.round(portion.nutrition.carbsG)} г</span></article>)}</div></section>}
       <div className="servings-control"><div><b>Порции</b><small>Ингредиенты пересчитаются</small></div><div><button onClick={() => setServings(Math.max(1, servings - 1))} aria-label="Уменьшить число порций"><Minus /></button><strong>{servings}</strong><button onClick={() => setServings(servings + 1)} aria-label="Увеличить число порций"><Plus /></button></div></div>
       <section className="recipe-section"><h2>Ингредиенты</h2>{dish.ingredients.map((ingredient) => <div className="ingredient" key={`${ingredient.name}-${ingredient.unit}`}><span>{ingredient.name}{ingredient.fromInventory ? <small> · из запасов</small> : null}</span><b>{Math.round(ingredient.quantity * factor * 10) / 10} {unitNames[ingredient.unit]}</b></div>)}</section>
       <section className="recipe-section steps"><h2>Как приготовить</h2>{dish.instructions.map((instruction, index) => <div key={`${index}-${instruction}`}><span>{index + 1}</span><p>{instruction}</p></div>)}</section>

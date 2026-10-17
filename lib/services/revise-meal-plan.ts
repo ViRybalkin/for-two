@@ -1,12 +1,13 @@
 import "server-only";
 import { zodTextFormat } from "openai/helpers/zod";
 import { getOpenAI } from "@/lib/openai";
-import { generatedMealPlanSchema, type MealPlanRevisionRequest } from "@/lib/schemas/meal-plan";
+import { generatedMealPlanSchema, persistedMealPlanSchema, type MealPlanRevisionRequest } from "@/lib/schemas/meal-plan";
 import { MEAL_PLAN_AI_REQUEST_OPTIONS } from "@/lib/meal-plan-ai-request";
 import { reconcileMealPlanWithInventory } from "@/lib/meal-plan-inventory";
+import { buildNutritionTargets } from "@/lib/nutrition";
 
 export async function reviseMealPlan(input: MealPlanRevisionRequest) {
-  const currentPlan = generatedMealPlanSchema.parse(input.plan);
+  const currentPlan = persistedMealPlanSchema.parse(input.plan);
   const response = await getOpenAI().responses.parse({
     model: process.env.OPENAI_TEXT_MODEL || "gpt-6-luna",
     store: false,
@@ -17,17 +18,18 @@ export async function reviseMealPlan(input: MealPlanRevisionRequest) {
           "Ты редактируешь уже составленное меню по команде пользователя.",
           "Применяй только запрошенные изменения, а всё остальное сохраняй без изменений.",
           "Можно удалять и заменять блюда или ингредиенты, менять количество, порции, стоимость и шаги приготовления.",
-          "После изменений пересчитай summary, nutritionPerServing, estimatedCostThb и missingProducts так, чтобы они соответствовали меню.",
+          "После изменений пересчитай summary, nutritionPerServing, portions, estimatedCostThb и missingProducts так, чтобы они соответствовали меню.",
           "Не добавляй обратно явно удалённые пользователем блюда или ингредиенты.",
           "Сохраняй даты и типы приёмов пищи, если пользователь прямо не попросил изменить их.",
           "Пиши по-русски. Ингредиенты должны иметь положительное количество и единицы g, ml или piece.",
           "Учитывай inventory из originalRequest: используй точные названия домашних продуктов, а в missingProducts оставляй только недостающее количество.",
+          "Сохраняй две персональные portions и соблюдай nutritionTargets. Для неполного дня не перераспределяй недостающую долю selectedDailyCoverage на выбранные приёмы. approximateWeightG — примерный вес готовой порции; размеры для двух людей могут различаться. Не требуй взвешивать готовое блюдо.",
           "Для изменённого рецепта возвращай 4–5 достаточно подробных последовательных шагов приготовления."
         ].join("\n")
       },
       {
         role: "user",
-        content: JSON.stringify({ instruction: input.instruction, originalRequest: input.request, currentPlan })
+        content: JSON.stringify({ instruction: input.instruction, originalRequest: input.request, nutritionTargets: buildNutritionTargets(input.request.nutritionProfiles, input.request.mealTypes), currentPlan })
       }
     ],
     text: { format: zodTextFormat(generatedMealPlanSchema, "revised_meal_plan") }

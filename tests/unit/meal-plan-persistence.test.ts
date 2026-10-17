@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createDemoMealPlan } from "@/lib/demo-meal-plan";
 import { saveMealPlanSchema } from "@/lib/services/meal-plan-repository";
 import type { MealPlanRequest } from "@/lib/schemas/meal-plan";
+import { defaultNutritionProfiles } from "@/lib/nutrition";
 
 const request: MealPlanRequest = {
   mode: "inventory" as const,
@@ -9,7 +10,8 @@ const request: MealPlanRequest = {
   servings: 2,
   cuisines: ["тайская"],
   mealTypes: ["breakfast", "dinner"],
-  inventory: []
+  inventory: [],
+  nutritionProfiles: defaultNutritionProfiles
 };
 
 describe("meal plan persistence contract", () => {

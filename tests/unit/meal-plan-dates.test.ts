@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createDemoMealPlan } from "@/lib/demo-meal-plan";
 import { getBangkokDate, normalizeMealPlanDates } from "@/lib/meal-plan-dates";
+import { defaultNutritionProfiles } from "@/lib/nutrition";
 
 describe("meal plan dates", () => {
   const now = new Date("2026-10-07T18:30:00Z");
@@ -16,7 +17,8 @@ describe("meal plan dates", () => {
       servings: 2,
       cuisines: ["тайская"],
       mealTypes: ["dinner"],
-      inventory: []
+      inventory: [],
+      nutritionProfiles: defaultNutritionProfiles
     });
     plan.dishes = [
       { ...plan.dishes[0], date: "1906-08-01" },

@@ -5,6 +5,7 @@ import { generatedMealPlanSchema, type MealPlanRequest } from "@/lib/schemas/mea
 import { getBangkokDate, normalizeMealPlanDates } from "@/lib/meal-plan-dates";
 import { MEAL_PLAN_AI_REQUEST_OPTIONS } from "@/lib/meal-plan-ai-request";
 import { reconcileMealPlanWithInventory } from "@/lib/meal-plan-inventory";
+import { buildNutritionTargets } from "@/lib/nutrition";
 
 export async function generateMealPlan(input: MealPlanRequest) {
   const client = getOpenAI();
@@ -25,12 +26,17 @@ export async function generateMealPlan(input: MealPlanRequest) {
           "Если продукта дома хватает лишь частично, добавляй в missingProducts только недостающее количество.",
           "Для ингредиентов из inventory сохраняй название продукта точно как во входных данных, чтобы количество можно было проверить автоматически.",
           "Для режима inventory особенно приоритетны продукты с ближайшим сроком годности. В режиме stores разрешено докупить недостающее в пределах бюджета.",
-          "Обязательная техника: плита, аэрогриль, рисоварка, пароварка, микроволновка, весы или маломощный блендер. Не требуй другой техники."
+          "Соблюдай переданные nutritionTargets по каждому человеку и каждому дню. Калорийность держи в пределах ±10%, белок — не ниже минимума, жиры и углеводы — внутри диапазонов, клетчатку — не ниже минимума.",
+          "Применяй к каждому приёму пищи его долю из selectedMealShares. Если выбрана только часть дня, их сумма selectedDailyCoverage может быть меньше 1 — не перераспределяй остаток и не пытайся вместить полную суточную норму в выбранные приёмы.",
+          "Для каждого блюда верни ровно две записи portions в том же порядке, что и nutritionTargets.people. approximateWeightG — примерный вес готовой порции этого человека; размеры порций могут различаться.",
+          "Не требуй взвешивать готовое блюдо и не добавляй инструкции о взвешивании. nutritionPerServing должен быть средним арифметическим КБЖУ двух персональных порций для совместимости интерфейса.",
+          "Эти ориентиры предназначены для здоровых взрослых и не являются лечебной диетой. Не заявляй медицинский эффект.",
+          "Допустимая техника: плита, аэрогриль, рисоварка, пароварка, микроволновка или маломощный блендер. Не требуй кухонных весов или другой техники."
         ].join("\n")
       },
       {
         role: "user",
-        content: JSON.stringify(input)
+        content: JSON.stringify({ ...input, nutritionTargets: buildNutritionTargets(input.nutritionProfiles, input.mealTypes) })
       }
     ],
     text: { format: zodTextFormat(generatedMealPlanSchema, "meal_plan") }

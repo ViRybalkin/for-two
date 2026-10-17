@@ -41,7 +41,11 @@ describe("generatedMealPlanSchema", () => {
       estimatedCostThb: 184,
       ingredients: [{ name: "Курица", quantity: 400, unit: "g", fromInventory: true }],
       instructions: ["Обжарить курицу"],
-      nutritionPerServing: { kcal: 640, proteinG: 42, fatG: 19, carbsG: 72, fiberG: 5 }
+      nutritionPerServing: { kcal: 640, proteinG: 42, fatG: 19, carbsG: 72, fiberG: 5 },
+      portions: [
+        { personName: "Вы", approximateWeightG: 420, nutrition: { kcal: 600, proteinG: 40, fatG: 18, carbsG: 68, fiberG: 5 } },
+        { personName: "Партнёр", approximateWeightG: 480, nutrition: { kcal: 680, proteinG: 44, fatG: 20, carbsG: 76, fiberG: 5 } }
+      ]
     }],
     missingProducts: []
   };
@@ -59,6 +63,13 @@ describe("generatedMealPlanSchema", () => {
     expect(generated.dishes[0]).not.toHaveProperty("imageUrl");
     expect(generated.dishes[0]).not.toHaveProperty("imageStatus");
     expect(persistedMealPlanSchema.safeParse(withImage).success).toBe(true);
+  });
+
+  it("keeps old persisted dishes readable without personal portions", () => {
+    const oldPlan = structuredClone(validPlan);
+    delete (oldPlan.dishes[0] as Partial<typeof oldPlan.dishes[number]>).portions;
+    expect(generatedMealPlanSchema.safeParse(oldPlan).success).toBe(false);
+    expect(persistedMealPlanSchema.safeParse(oldPlan).success).toBe(true);
   });
 
   it("marks every OpenAI response field as required", () => {

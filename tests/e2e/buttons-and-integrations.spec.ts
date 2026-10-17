@@ -208,6 +208,53 @@ test("UI использует ответ модели и отправляет и
   expect(savedBody).toMatchObject({ mode: "inventory", request: { days: 4, servings: 3 }, plan: { title: "Исправленное меню" } });
 });
 
+test("персональные цели КБЖУ сохраняются и задают разные размеры порций", async ({ page }) => {
+  let settings = {
+    maxCookingMinutes: 45,
+    difficulty: "medium",
+    allowRepeats: true,
+    batchCookingEnabled: false,
+    equipment: ["Плита"],
+    wish: "",
+    nutritionProfiles: [{ name: "Анна", weightKg: 60, dailyKcal: 1800 }, { name: "Макс", weightKg: 82, dailyKcal: 2400 }]
+  };
+  let generatedRequest: { nutritionProfiles?: typeof settings.nutritionProfiles } = {};
+  await page.route("**/api/settings", async (route) => {
+    if (route.request().method() === "PUT") settings = route.request().postDataJSON();
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", settings }) });
+  });
+  await page.route("**/api/meal-plans", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "supabase", items: [] }) });
+  });
+  await page.route("**/api/meal-plans/generate", async (route) => {
+    generatedRequest = route.request().postDataJSON();
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "openai", plan: {
+      title: "Персональное меню",
+      summary: { days: 3, servings: 2, estimatedTotalThb: 300, inventoryCoveragePercent: 0, budgetWarning: null },
+      dishes: [{ date: TODAY, mealType: "dinner", title: "Боул для двоих", cookingMinutes: 25, difficulty: "easy", servings: 2, estimatedCostThb: 220, ingredients: [{ name: "Рис", quantity: 300, unit: "g", fromInventory: false }], instructions: ["Приготовить"], nutritionPerServing: { kcal: 610, proteinG: 32, fatG: 18, carbsG: 78, fiberG: 8 }, portions: [
+        { personName: "Анна", approximateWeightG: 390, nutrition: { kcal: 520, proteinG: 28, fatG: 15, carbsG: 66, fiberG: 7 } },
+        { personName: "Макс", approximateWeightG: 520, nutrition: { kcal: 700, proteinG: 36, fatG: 21, carbsG: 90, fiberG: 9 } }
+      ] }],
+      missingProducts: []
+    } }) });
+  });
+
+  await page.reload();
+  await page.getByRole("button", { name: "Общие настройки" }).click();
+  const firstProfile = page.locator(".nutrition-profile").first();
+  await firstProfile.getByLabel("Цель, ккал/день").fill("1900");
+  await page.getByRole("button", { name: "Сохранить настройки" }).click();
+  await page.getByRole("button", { name: "Меню", exact: true }).click();
+  await expect(page.getByText(/Анна: 1900 ккал/)).toBeVisible();
+  await page.getByRole("button", { name: "Составить меню", exact: true }).click();
+  expect(generatedRequest.nutritionProfiles?.[0]).toMatchObject({ name: "Анна", dailyKcal: 1900 });
+  await page.getByRole("button", { name: /Ужин Боул для двоих/ }).click();
+  await expect(page.getByRole("region", { name: "Персональные порции" })).toContainText("Анна");
+  await expect(page.getByRole("region", { name: "Персональные порции" })).toContainText("390 г");
+  await expect(page.getByRole("region", { name: "Персональные порции" })).toContainText("Макс");
+  await expect(page.getByRole("region", { name: "Персональные порции" })).toContainText("520 г");
+});
+
 test("сохранённое меню загружается, а недостающие продукты появляются в покупках", async ({ page }) => {
   const plan = {
     title: "Меню из магазина",

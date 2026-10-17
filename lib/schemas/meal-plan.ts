@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { defaultNutritionProfiles, nutritionProfilesSchema } from "@/lib/nutrition";
 
 export const mealPlanRequestSchema = z.object({
   mode: z.enum(["inventory", "stores"]),
@@ -13,7 +14,22 @@ export const mealPlanRequestSchema = z.object({
     unit: z.enum(["г", "мл", "шт"]),
     expiry: z.string().max(80)
   })).max(250).default([]),
+  nutritionProfiles: nutritionProfilesSchema.default(defaultNutritionProfiles),
   wish: z.string().max(500).optional()
+});
+
+const nutritionSchema = z.object({
+  kcal: z.number().nonnegative(),
+  proteinG: z.number().nonnegative(),
+  fatG: z.number().nonnegative(),
+  carbsG: z.number().nonnegative(),
+  fiberG: z.number().nonnegative()
+});
+
+const personalPortionSchema = z.object({
+  personName: z.string(),
+  approximateWeightG: z.number().positive(),
+  nutrition: nutritionSchema
 });
 
 const generatedMealDishSchema = z.object({
@@ -31,13 +47,8 @@ const generatedMealDishSchema = z.object({
     fromInventory: z.boolean()
   })),
   instructions: z.array(z.string()).min(1).max(5),
-  nutritionPerServing: z.object({
-    kcal: z.number().nonnegative(),
-    proteinG: z.number().nonnegative(),
-    fatG: z.number().nonnegative(),
-    carbsG: z.number().nonnegative(),
-    fiberG: z.number().nonnegative()
-  })
+  nutritionPerServing: nutritionSchema,
+  portions: z.array(personalPortionSchema).length(2)
 });
 
 export const generatedMealPlanSchema = z.object({
@@ -59,6 +70,7 @@ export const generatedMealPlanSchema = z.object({
 
 export const persistedMealPlanSchema = generatedMealPlanSchema.extend({
   dishes: z.array(generatedMealDishSchema.extend({
+    portions: z.array(personalPortionSchema).length(2).optional(),
     imageUrl: z.string().url().nullable().optional(),
     imageStatus: z.enum(["pending", "processing", "completed", "failed"]).optional()
   })).min(1)

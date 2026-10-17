@@ -1,6 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
+import { defaultNutritionProfiles, nutritionProfilesSchema } from "@/lib/nutrition";
 
 export const settingsSchema = z.object({
   maxCookingMinutes: z.number().int().min(15).max(180),
@@ -8,7 +9,8 @@ export const settingsSchema = z.object({
   allowRepeats: z.boolean(),
   batchCookingEnabled: z.boolean(),
   equipment: z.array(z.string().min(1).max(60)).max(30),
-  wish: z.string().max(500)
+  wish: z.string().max(500),
+  nutritionProfiles: nutritionProfilesSchema
 });
 
 export const defaultSettings: z.infer<typeof settingsSchema> = {
@@ -17,7 +19,8 @@ export const defaultSettings: z.infer<typeof settingsSchema> = {
   allowRepeats: true,
   batchCookingEnabled: false,
   equipment: ["Плита", "Аэрогриль", "Рисоварка", "Микроволновка"],
-  wish: "Больше овощей. Ужин не слишком острый."
+  wish: "Больше овощей. Ужин не слишком острый.",
+  nutritionProfiles: defaultNutritionProfiles
 };
 
 async function getHouseholdId() {
@@ -30,7 +33,7 @@ export async function loadSettings() {
   const client = getSupabaseAdmin();
   const householdId = await getHouseholdId();
   const [{ data: settings, error: settingsError }, { data: preferences, error: preferencesError }] = await Promise.all([
-    client.from("settings").select("max_cooking_minutes,difficulty,allow_repeats,batch_cooking_enabled,equipment").eq("household_id", householdId).maybeSingle(),
+    client.from("settings").select("max_cooking_minutes,difficulty,allow_repeats,batch_cooking_enabled,equipment,nutrition_profiles").eq("household_id", householdId).maybeSingle(),
     client.from("preferences").select("value").eq("household_id", householdId).eq("type", "free_text").eq("active", true).limit(1)
   ]);
   if (settingsError) throw settingsError;
@@ -41,7 +44,10 @@ export async function loadSettings() {
     allowRepeats: settings?.allow_repeats ?? defaultSettings.allowRepeats,
     batchCookingEnabled: settings?.batch_cooking_enabled ?? defaultSettings.batchCookingEnabled,
     equipment: Array.isArray(settings?.equipment) ? settings.equipment : defaultSettings.equipment,
-    wish: preferences?.[0]?.value || ""
+    wish: preferences?.[0]?.value || "",
+    nutritionProfiles: nutritionProfilesSchema.safeParse(settings?.nutrition_profiles).success
+      ? settings?.nutrition_profiles
+      : defaultNutritionProfiles
   });
 }
 
@@ -55,6 +61,7 @@ export async function saveSettings(input: z.infer<typeof settingsSchema>) {
     allow_repeats: input.allowRepeats,
     batch_cooking_enabled: input.batchCookingEnabled,
     equipment: input.equipment,
+    nutrition_profiles: input.nutritionProfiles,
     updated_at: new Date().toISOString()
   }, { onConflict: "household_id" });
   if (settingsError) throw settingsError;

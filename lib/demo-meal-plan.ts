@@ -30,7 +30,12 @@ export function createDemoMealPlan(input: MealPlanRequest): GeneratedMealPlan {
         estimatedCostThb: 120,
         ingredients: [{ name: "Основные ингредиенты", quantity: 1, unit: "piece" as const, fromInventory: input.mode === "inventory" }],
         instructions: ["Подготовить ингредиенты", "Приготовить и подать"],
-        nutritionPerServing: { kcal: 520, proteinG: 30, fatG: 16, carbsG: 62, fiberG: 7 }
+        nutritionPerServing: { kcal: 520, proteinG: 30, fatG: 16, carbsG: 62, fiberG: 7 },
+        portions: input.nutritionProfiles.map((profile) => ({
+          personName: profile.name,
+          approximateWeightG: Math.round(420 * profile.dailyKcal / 2000),
+          nutrition: { kcal: Math.round(520 * profile.dailyKcal / 2000), proteinG: Math.round(30 * profile.dailyKcal / 2000), fatG: Math.round(16 * profile.dailyKcal / 2000), carbsG: Math.round(62 * profile.dailyKcal / 2000), fiberG: Math.round(7 * profile.dailyKcal / 2000) }
+        })) as GeneratedMealPlan["dishes"][number]["portions"]
       };
     });
   }).flat();
