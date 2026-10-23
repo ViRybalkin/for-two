@@ -3,6 +3,7 @@ import { isSupabaseConfigured } from "@/lib/services/inventory-repository";
 import { getMealPlan } from "@/lib/services/meal-plan-repository";
 import { createShoppingItemsForMealPlan } from "@/lib/services/shopping-repository";
 import { configurationError, isDemoMode } from "@/lib/runtime-mode";
+import { reconcileMealPlanWithInventory } from "@/lib/meal-plan-inventory";
 
 export const maxDuration = 60;
 
@@ -11,7 +12,8 @@ export async function POST(_: Request, context: { params: Promise<{ id: string }
   try {
     const { id } = await context.params;
     const saved = await getMealPlan(id);
-    const items = saved.mode === "stores" ? await createShoppingItemsForMealPlan(id, saved.plan) : [];
+    const plan = reconcileMealPlanWithInventory(saved.plan, saved.request.inventory);
+    const items = saved.mode === "stores" ? await createShoppingItemsForMealPlan(id, plan) : [];
     return NextResponse.json({ source: "supabase", items });
   } catch (error) {
     console.error("Shopping list sync failed", error);

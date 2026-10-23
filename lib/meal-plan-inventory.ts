@@ -15,7 +15,11 @@ function normalizeProductName(name: string) {
     .replaceAll("ё", "е")
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .replace(/\s+/g, " ")
-    .trim();
+    .trim()
+    .split(" ")
+    .filter(Boolean)
+    .sort((left, right) => left.localeCompare(right, "ru"))
+    .join(" ");
 }
 
 function productKey(name: string, unit: PlanUnit) {

@@ -171,7 +171,7 @@ export async function listShoppingItems() {
       id: item.id,
       name: product?.display_name_ru || "Товар",
       detail: metadata.requiredDetail
-        ? `${localizeDetail(metadata.detail)} · нужно ${localizeDetail(metadata.requiredDetail)}`
+        ? `${localizeDetail(metadata.detail)} · не хватает ${localizeDetail(metadata.requiredDetail)}`
         : localizeDetail(metadata.detail),
       price: Number(item.estimated_price_thb || 0),
       bought: item.purchased,

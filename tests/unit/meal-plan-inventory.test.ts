@@ -52,4 +52,16 @@ describe("meal plan inventory reconciliation", () => {
     const result = reconcileMealPlanWithInventory(plan, [{ name: "Рис", quantity: 1, unit: "шт", expiry: "" }]);
     expect(result.missingProducts).toContainEqual({ name: "Рис", quantity: 200, unit: "g" });
   });
+
+  it("matches the same inventory product when words are reordered", () => {
+    const butterPlan = structuredClone(plan);
+    butterPlan.dishes[0].ingredients = [{ name: "Сливочное масло", quantity: 20, unit: "g", fromInventory: false }];
+
+    const result = reconcileMealPlanWithInventory(butterPlan, [
+      { name: "Масло сливочное", quantity: 70, unit: "г", expiry: "" }
+    ]);
+
+    expect(result.dishes[0].ingredients[0].fromInventory).toBe(true);
+    expect(result.missingProducts).toEqual([]);
+  });
 });
