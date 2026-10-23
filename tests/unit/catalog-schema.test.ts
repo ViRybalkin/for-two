@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { catalogSearchRequestSchema, extractProductImage, extractSearchResultImages } from "@/lib/services/catalog-search";
+import { CATALOG_SEARCH_TIMEOUT_MS, catalogSearchRequestSchema, extractProductImage, extractSearchResultImages } from "@/lib/services/catalog-search";
 
 describe("catalogSearchRequestSchema", () => {
+  it("allows catalog enrichment enough time while staying below the Vercel function limit", () => {
+    expect(CATALOG_SEARCH_TIMEOUT_MS).toBe(45_000);
+    expect(CATALOG_SEARCH_TIMEOUT_MS).toBeLessThan(60_000);
+  });
+
   it("normalizes a valid request", () => {
     expect(catalogSearchRequestSchema.parse({ query: " jasmine rice ", store: "makro" })).toEqual({ query: "jasmine rice", store: "makro" });
   });

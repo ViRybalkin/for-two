@@ -3,6 +3,13 @@ import { z } from "zod";
 import { zodTextFormat } from "openai/helpers/zod";
 import { getOpenAI } from "@/lib/openai";
 
+export const CATALOG_SEARCH_TIMEOUT_MS = 45_000;
+
+const catalogSearchRequestOptions = {
+  timeout: CATALOG_SEARCH_TIMEOUT_MS,
+  maxRetries: 0
+} as const;
+
 export const catalogSearchRequestSchema = z.object({
   query: z.string().trim().min(2).max(120),
   store: z.literal("makro").default("makro")
@@ -158,7 +165,7 @@ async function searchOfficialCatalogChunk(names: string[], store: "tops" | "makr
       }
     ],
     text: { format: zodTextFormat(catalogBatchResultSchema, "catalog_batch_search") }
-  }, { timeout: 12_000, maxRetries: 0 });
+  }, catalogSearchRequestOptions);
 
   if (!response.output_parsed) return [];
   const searchImages = extractSearchResultImages(response.output);
@@ -207,7 +214,7 @@ export async function searchOfficialCatalog(input: z.infer<typeof catalogSearchR
       }
     ],
     text: { format: zodTextFormat(catalogSearchResultSchema, "catalog_search") }
-  });
+  }, catalogSearchRequestOptions);
 
   if (!response.output_parsed) throw new Error("Catalog results were not returned");
   const products = response.output_parsed.products.filter((product) => isOfficialUrl(product.url, product.store));

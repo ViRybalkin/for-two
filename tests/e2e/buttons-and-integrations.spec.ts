@@ -160,7 +160,7 @@ test("UI использует ответ модели и отправляет и
         plan: {
           title: "Интеграционное меню",
           summary: { days: 4, servings: 3, estimatedTotalThb: 555, inventoryCoveragePercent: 67, budgetWarning: null },
-          dishes: [{ date: "2026-10-09", mealType: "dinner", title: "Интеграционный суп", cookingMinutes: 25, difficulty: "easy", servings: 3, estimatedCostThb: 200, ingredients: [{ name: "Рис", quantity: 200, unit: "g", fromInventory: true }], instructions: ["Приготовить"], nutritionPerServing: { kcal: 400, proteinG: 20, fatG: 10, carbsG: 50, fiberG: 5 } }],
+          dishes: [{ date: TODAY, mealType: "dinner", title: "Интеграционный суп", cookingMinutes: 25, difficulty: "easy", servings: 3, estimatedCostThb: 200, ingredients: [{ name: "Рис", quantity: 200, unit: "g", fromInventory: true }], instructions: ["Приготовить"], nutritionPerServing: { kcal: 400, proteinG: 20, fatG: 10, carbsG: 50, fiberG: 5 } }],
           missingProducts: []
         }
       })
@@ -179,13 +179,13 @@ test("UI использует ответ модели и отправляет и
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source: "openai", plan: {
       title: "Исправленное меню",
       summary: { days: 4, servings: 3, estimatedTotalThb: 480, inventoryCoveragePercent: 72, budgetWarning: null },
-      dishes: [{ date: "2026-10-09", mealType: "dinner", title: "Овощной суп", cookingMinutes: 20, difficulty: "easy", servings: 3, estimatedCostThb: 160, ingredients: [{ name: "Томаты", quantity: 300, unit: "g", fromInventory: false }], instructions: ["Нарезать овощи", "Прогреть кастрюлю", "Сварить овощи", "Проверить готовность", "Подать суп"], nutritionPerServing: { kcal: 320, proteinG: 12, fatG: 8, carbsG: 48, fiberG: 8 } }],
+      dishes: [{ date: TODAY, mealType: "dinner", title: "Овощной суп", cookingMinutes: 20, difficulty: "easy", servings: 3, estimatedCostThb: 160, ingredients: [{ name: "Томаты", quantity: 300, unit: "g", fromInventory: false }], instructions: ["Нарезать овощи", "Прогреть кастрюлю", "Сварить овощи", "Проверить готовность", "Подать суп"], nutritionPerServing: { kcal: 320, proteinG: 12, fatG: 8, carbsG: 48, fiberG: 8 } }],
       missingProducts: [{ name: "Томаты", quantity: 300, unit: "g" }]
     } }) });
   });
 
   await page.getByRole("button", { name: "Меню", exact: true }).click();
-  await page.getByLabel("Дата начала меню").fill("2026-10-20");
+  await page.getByLabel("Дата начала меню").fill(TODAY);
   await page.getByRole("button", { name: "Увеличить период" }).click();
   await page.getByRole("button", { name: "Увеличить порции" }).click();
   await page.getByPlaceholder("Например: больше овощей, без острого…").fill("без острого");
@@ -195,7 +195,7 @@ test("UI использует ответ модели и отправляет и
 
   await expect(page.getByText("Интеграционный суп", { exact: true })).toBeVisible();
   expect(requestBody).not.toBeNull();
-  expect(requestBody).toMatchObject({ days: 4, startDate: "2026-10-20", servings: 3, wish: "без острого" });
+  expect(requestBody).toMatchObject({ days: 4, startDate: TODAY, servings: 3, wish: "без острого" });
   expect((requestBody as unknown as { cuisines: string[] }).cuisines).toContain("японская");
   expect((requestBody as unknown as { cuisines: string[] }).cuisines).toContain("перуанская");
   await page.getByPlaceholder(/Например: убери ужин/).fill("Замени суп на овощной и убери рис");
@@ -206,7 +206,7 @@ test("UI использует ответ модели и отправляет и
   expect(revisionBody).toMatchObject({ instruction: "Замени суп на овощной и убери рис", plan: { title: "Интеграционное меню" } });
   await page.getByRole("button", { name: "Сохранить меню" }).click();
   await expect(page.locator(".toast")).toContainText("Меню сохранено в базе");
-  expect(savedBody).toMatchObject({ mode: "inventory", request: { days: 4, startDate: "2026-10-20", servings: 3 }, plan: { title: "Исправленное меню" } });
+  expect(savedBody).toMatchObject({ mode: "inventory", request: { days: 4, startDate: TODAY, servings: 3 }, plan: { title: "Исправленное меню" } });
 });
 
 test("персональные цели КБЖУ сохраняются и задают разные размеры порций", async ({ page }) => {
