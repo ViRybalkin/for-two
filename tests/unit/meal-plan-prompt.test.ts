@@ -24,6 +24,15 @@ describe("buildMealPlanSystemPrompt", () => {
     expect(prompt).toContain("оставь его на будущее");
   });
 
+  it("prevents semantic duplicates across the full menu", () => {
+    expect(prompt).toContain("Оценивай разнообразие по всему меню целиком");
+    expect(prompt).toContain("смысловыми повторами");
+    expect(prompt).toContain("Картофельная сковорода со шпинатом и яйцом");
+    expect(prompt).toContain("Яичница со шпинатом и картофелем");
+    expect(prompt).toContain("сравни все блюда попарно");
+    expect(prompt).toContain("Меняй как минимум два существенных признака блюда");
+  });
+
   it("does not require kitchen scales", () => {
     expect(prompt).toContain("Не требуй духовку или другую технику");
     expect(prompt).not.toMatch(/кухонн(?:ые|ых) вес/i);
