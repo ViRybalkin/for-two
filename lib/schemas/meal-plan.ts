@@ -33,7 +33,7 @@ const personalPortionSchema = z.object({
   nutrition: nutritionSchema
 });
 
-const generatedMealDishSchema = z.object({
+export const generatedMealDishSchema = z.object({
   date: z.string().date(),
   mealType: z.enum(["breakfast", "lunch", "dinner", "snack"]),
   title: z.string(),
@@ -83,6 +83,15 @@ export const mealPlanRevisionRequestSchema = z.object({
   plan: persistedMealPlanSchema
 });
 
+export const mealPlanRevisionResultSchema = z.object({
+  changedDishes: z.array(generatedMealDishSchema),
+  removedDishes: z.array(z.object({
+    date: z.string().date(),
+    mealType: z.enum(["breakfast", "lunch", "dinner", "snack"])
+  }))
+});
+
 export type MealPlanRequest = z.infer<typeof mealPlanRequestSchema>;
 export type GeneratedMealPlan = z.infer<typeof persistedMealPlanSchema>;
 export type MealPlanRevisionRequest = z.infer<typeof mealPlanRevisionRequestSchema>;
+export type MealPlanRevisionResult = z.infer<typeof mealPlanRevisionResultSchema>;
