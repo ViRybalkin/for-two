@@ -9,10 +9,10 @@ describe("cuisine options", () => {
     expect(TOP_WORLD_CUISINES.every((cuisine) => CUISINE_OPTIONS.includes(cuisine))).toBe(true);
   });
 
-  it("replaces the excluded cuisines with the next unique ranked choices", () => {
+  it("keeps the selected replacements and excludes removed cuisines", () => {
     expect(TOP_WORLD_CUISINES).toEqual(
       expect.arrayContaining([
-        "Грузинская",
+        "Русская",
         "Венгерская",
         "Колумбийская",
         "Филиппинская",
@@ -26,7 +26,8 @@ describe("cuisine options", () => {
         "Индийская",
         "Польская",
         "Американская",
-        "Хорватская"
+        "Хорватская",
+        "Грузинская"
       ])
     );
   });
