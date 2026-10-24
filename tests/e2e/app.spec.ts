@@ -28,7 +28,7 @@ test("локальные API валидируют данные и работаю
   const invalidInventory = await request.post("/api/inventory", { data: { name: "" } });
   expect(invalidInventory.status()).toBe(400);
   const inventory = await request.post("/api/inventory", {
-    data: { name: "Авокадо", quantity: 2, unit: "шт", storage: "Холодильник", expiryDate: null }
+    data: { name: "Авокадо", quantity: 2, unit: "шт", category: "produce", expiryDate: null }
   });
   expect(inventory.ok()).toBe(true);
   const inventoryData = await inventory.json();

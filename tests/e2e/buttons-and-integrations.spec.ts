@@ -526,7 +526,7 @@ test("запасы можно свободно изменять, редакти�
   await page.route("**/api/inventory", async (route) => {
     if (route.request().method() === "POST") {
       requestBody = route.request().postDataJSON();
-      await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ source: "supabase", id: "test-id" }) });
+      await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ source: "supabase", id: "test-id", category: "dairy", storage: "Кладовая" }) });
       return;
     }
     await route.continue();
@@ -546,12 +546,12 @@ test("запасы можно свободно изменять, редакти�
   await page.getByPlaceholder("Например, авокадо").fill("Молоко");
   await page.getByPlaceholder("500").fill("750");
   await page.getByLabel("Единица").selectOption("мл");
-  await page.getByLabel("Где хранится").selectOption("Морозильник");
+  await page.getByLabel("Категория").selectOption("dairy");
   await page.getByLabel(/Срок годности/).fill("2026-10-10");
   await page.getByRole("button", { name: "Добавить в запасы" }).click();
 
   await expect(page.getByRole("status")).toContainText("Продукт сохранён");
-  expect(requestBody).toMatchObject({ name: "Молоко", quantity: 750, unit: "мл", storage: "Морозильник", expiryDate: "2026-10-10" });
+  expect(requestBody).toMatchObject({ name: "Молоко", quantity: 750, unit: "мл", category: "dairy", expiryDate: "2026-10-10" });
 
   await page.getByRole("button", { name: "Запасы", exact: true }).click();
   let milk = page.getByText("Молоко", { exact: true }).locator("xpath=ancestor::article");
@@ -559,18 +559,18 @@ test("запасы можно свободно изменять, редакти�
   await exactQuantity.fill("812.5");
   await milk.getByRole("button", { name: "Сохранить количество: Молоко" }).click();
   await expect(exactQuantity).toHaveValue("812.5");
-  expect(patchBodies[0]).toMatchObject({ name: "Молоко", quantity: 812.5, unit: "мл", storage: "Морозильник" });
+  expect(patchBodies[0]).toMatchObject({ name: "Молоко", quantity: 812.5, unit: "мл", category: "dairy" });
 
   await milk.getByRole("button", { name: "Редактировать Молоко" }).click();
   await expect(page.getByRole("heading", { name: "Редактировать продукт" })).toBeVisible();
   await page.getByLabel("Название").fill("Молоко кокосовое");
   await page.getByLabel("Количество", { exact: true }).fill("640.25");
-  await page.getByLabel("Где хранится").selectOption("Холодильник");
+  await page.getByLabel("Категория").selectOption("sauces");
   await page.getByLabel(/Срок годности/).fill("2026-10-12");
   await page.getByRole("button", { name: "Сохранить изменения" }).click();
-  expect(patchBodies[1]).toMatchObject({ name: "Молоко кокосовое", quantity: 640.25, storage: "Холодильник", expiryDate: "2026-10-12" });
+  expect(patchBodies[1]).toMatchObject({ name: "Молоко кокосовое", quantity: 640.25, category: "sauces", expiryDate: "2026-10-12" });
   milk = page.getByText("Молоко кокосовое", { exact: true }).locator("xpath=ancestor::article");
-  await expect(milk).toContainText("Холодильник · до 12 окт.");
+  await expect(milk).toContainText("до 12 окт.");
 
   await milk.getByRole("button", { name: "Редактировать Молоко кокосовое" }).click();
   page.once("dialog", (dialog) => dialog.accept());

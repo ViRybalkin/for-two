@@ -14,7 +14,7 @@ export async function PATCH(request: Request, context: RouteContext<"/api/invent
     if (!isDemoMode()) return NextResponse.json(configurationError, { status: 503 });
     if ("delta" in parsed.data) return NextResponse.json({ source: "demo" });
     const expiryDate = parsed.data.expiryDate || null;
-    return NextResponse.json({ source: "demo", item: { id, ...parsed.data, expiryDate, expiry: expiryDate ? `до ${expiryDate}` : "срок не указан", icon: "🥬" } });
+    return NextResponse.json({ source: "demo", item: { id, ...parsed.data, storage: "Кладовая", expiryDate, expiry: expiryDate ? `до ${expiryDate}` : "срок не указан", icon: "🥬" } });
   }
   try {
     if ("delta" in parsed.data) return NextResponse.json({ source: "supabase", quantity: await adjustInventoryItem(id, parsed.data.delta) });
@@ -22,7 +22,7 @@ export async function PATCH(request: Request, context: RouteContext<"/api/invent
   } catch (error) {
     console.error("Inventory update failed", error);
     const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
-    if (code === "23505") return NextResponse.json({ error: { code: "DUPLICATE_ITEM", message: "Такой продукт уже есть в этом месте хранения" } }, { status: 409 });
+    if (code === "23505") return NextResponse.json({ error: { code: "DUPLICATE_ITEM", message: "Такой продукт уже есть в запасах" } }, { status: 409 });
     return NextResponse.json({ error: { code: "DATABASE_UNAVAILABLE", message: "Не удалось изменить продукт" } }, { status: 503 });
   }
 }

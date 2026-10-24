@@ -37,7 +37,7 @@ import type { GeneratedMealPlan, MealPlanRequest } from "@/lib/schemas/meal-plan
 import { getBangkokDate } from "@/lib/meal-plan-dates";
 import { getMealDishKey } from "@/lib/meal-plan-completion";
 import { CUISINE_OPTIONS } from "@/lib/cuisines";
-import { groupProductsByCategory, type ShoppingCategoryId } from "@/lib/shopping-categories";
+import { getShoppingCategory, groupProductsByCategory, shoppingCategories, type ShoppingCategoryId } from "@/lib/shopping-categories";
 import { defaultNutritionProfiles, type NutritionProfile } from "@/lib/nutrition";
 
 type Tab = "today" | "inventory" | "menu" | "shopping" | "more";
@@ -53,7 +53,7 @@ type InventoryItem = {
   icon: string;
   category?: ShoppingCategoryId;
 };
-type InventoryFormValue = Pick<InventoryItem, "name" | "quantity" | "unit" | "storage"> & { expiryDate: string | null };
+type InventoryFormValue = Pick<InventoryItem, "name" | "quantity" | "unit"> & { category: ShoppingCategoryId; expiryDate: string | null };
 type ShoppingUnit = "g" | "ml" | "piece";
 type ShoppingItem = { id: string; name: string; detail: string; price: number; bought: boolean; store: "Tops" | "Makro"; url?: string | null; imageUrl?: string | null; purchasedQuantity?: number; purchasedUnit?: ShoppingUnit; category?: ShoppingCategoryId };
 type CatalogProduct = { store: "tops" | "makro"; originalName: string; packageText: string | null; priceThb: number | null; url: string; imageUrl: string | null; availability: string; checkedAt: string };
@@ -232,10 +232,10 @@ export function AppShell() {
 
       {sheet === "add" && <InventoryProductSheet onClose={() => setSheet(null)} onSave={async (item) => {
         try {
-          const response = await fetch("/api/inventory", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: item.name, quantity: item.quantity, unit: item.unit, storage: item.storage, expiryDate: item.expiryDate }) });
+          const response = await fetch("/api/inventory", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(item) });
           const data = await response.json();
           if (!response.ok) throw new Error(data?.error?.message || "Не удалось сохранить продукт");
-          setInventory((old) => [{ ...item, id: data.id || crypto.randomUUID(), expiry: formatExpiryDate(item.expiryDate), icon: "🥬", category: data.category }, ...old]);
+          setInventory((old) => [{ ...item, id: data.id || crypto.randomUUID(), storage: data.storage || "Кладовая", expiry: formatExpiryDate(item.expiryDate), icon: "🥬", category: data.category || item.category }, ...old]);
           setSheet(null);
           notify("Продукт сохранён в запасах");
           return true;
@@ -370,7 +370,7 @@ function TodayScreen({ savedPlan, inventory, loading, onMenu, onInventory, onRec
       <div className="expiry-list">
         {expiringItems.map((item, index) => <div className="expiry-item" key={item.id}>
           <div className="expiry-icon">{item.icon}</div>
-          <div className="expiry-copy"><b>{item.name}</b><span>{item.quantity} {item.unit} · {item.storage.toLowerCase()}</span></div>
+          <div className="expiry-copy"><b>{item.name}</b><span>{item.quantity} {item.unit}</span></div>
           <span className={index === 0 ? "warning-chip" : "warning-chip soft"}>{item.expiry}</span>
         </div>)}
         {!expiringItems.length && <div className="expiry-empty"><Clock3 size={22} /><span><b>Нет продуктов с указанным сроком</b><small>Добавьте срок годности в запасах, и мы напомним вовремя</small></span></div>}
@@ -394,7 +394,7 @@ function InventoryScreen({ items, loading, setItems, onAdd, onEdit, notify }: { 
     if (!Number.isFinite(quantity) || quantity <= 0) return notify("Укажите количество больше нуля");
     setPendingId(id);
     try {
-      const response = await fetch(`/api/inventory/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: item.name, quantity, unit: item.unit, storage: item.storage, expiryDate: item.expiryDate || null }) });
+      const response = await fetch(`/api/inventory/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: item.name, quantity, unit: item.unit, category: item.category || getShoppingCategory(item.name), expiryDate: item.expiryDate || null }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error?.message || "Не удалось изменить количество");
       setItems((old) => old.map((entry) => entry.id === id ? (data.item || { ...entry, quantity }) : entry));
@@ -417,7 +417,7 @@ function InventoryScreen({ items, loading, setItems, onAdd, onEdit, notify }: { 
           <div className="inventory-list">{category.items.map((item) => (
             <article className="inventory-item" key={item.id}>
               <span className="food-icon">{item.icon}</span>
-              <div className="item-main"><b>{item.name}</b><span>{item.storage} · {item.expiry}</span><InventoryQuantityEditor item={item} pending={pendingId === item.id} onSave={(quantity) => void saveQuantity(item.id, quantity)} /></div>
+              <div className="item-main"><b>{item.name}</b><span>{item.expiry}</span><InventoryQuantityEditor item={item} pending={pendingId === item.id} onSave={(quantity) => void saveQuantity(item.id, quantity)} /></div>
               <button className="inventory-edit" type="button" onClick={() => onEdit(item)} aria-label={`Редактировать ${item.name}`}><Pencil size={17} /></button>
             </article>
           ))}</div>
@@ -743,12 +743,12 @@ function InventoryProductSheet({ item, onClose, onSave, onDelete }: { item?: Inv
   const [name, setName] = useState(item?.name || "");
   const [quantity, setQuantity] = useState(String(item?.quantity || ""));
   const [unit, setUnit] = useState<InventoryItem["unit"]>(item?.unit || "г");
-  const [storage, setStorage] = useState<Storage>(item?.storage || "Холодильник");
+  const [category, setCategory] = useState<ShoppingCategoryId>(item?.category || getShoppingCategory(item?.name || ""));
   const [expiryDate, setExpiryDate] = useState(item?.expiryDate || "");
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    const saved = await onSave({ name: name.trim(), quantity: Number(quantity), unit, storage, expiryDate: expiryDate || null });
+    const saved = await onSave({ name: name.trim(), quantity: Number(quantity), unit, category, expiryDate: expiryDate || null });
     if (!saved) setSaving(false);
   };
   const remove = async () => {
@@ -759,7 +759,7 @@ function InventoryProductSheet({ item, onClose, onSave, onDelete }: { item?: Inv
   };
   const pending = saving || deleting;
   return <div className="overlay" role="dialog" aria-modal="true"><div className="sheet"><div className="sheet-handle" /><div className="sheet-title"><div><p className="eyebrow">{item ? "ЗАПАСЫ" : "НОВАЯ ПОЗИЦИЯ"}</p><h2>{item ? "Редактировать продукт" : "Добавить продукт"}</h2></div><button className="icon-button" onClick={onClose} aria-label="Закрыть" disabled={pending}><X /></button></div>
-    <form onSubmit={submit} className="product-form"><label><span>Название</span><input required placeholder="Например, авокадо" autoFocus={!item} disabled={pending} value={name} onChange={(event) => setName(event.target.value)} /></label><div className="form-split"><label><span>Количество</span><input type="number" min="0.01" max="1000000" step="0.01" inputMode="decimal" required placeholder="500" disabled={pending} value={quantity} onChange={(event) => setQuantity(event.target.value)} /></label><label><span>Единица</span><select value={unit} disabled={pending} onChange={(event) => setUnit(event.target.value as InventoryItem["unit"])}><option>г</option><option>мл</option><option>шт</option></select></label></div><label><span>Где хранится</span><select value={storage} disabled={pending} onChange={(event) => setStorage(event.target.value as Storage)}><option>Холодильник</option><option>Морозильник</option><option>Кладовая</option></select></label><label><span>Срок годности <small>необязательно</small></span><input type="date" disabled={pending} value={expiryDate} onChange={(event) => setExpiryDate(event.target.value)} /></label><button className="main-action" type="submit" disabled={pending || !name.trim() || !Number.isFinite(Number(quantity)) || Number(quantity) <= 0}>{saving ? "Сохраняем…" : item ? "Сохранить изменения" : "Добавить в запасы"}</button>{item && <button className="danger-action" type="button" disabled={pending} onClick={() => void remove()}><Trash2 size={18} />{deleting ? "Удаляем…" : "Удалить продукт"}</button>}</form>
+    <form onSubmit={submit} className="product-form"><label><span>Название</span><input required placeholder="Например, авокадо" autoFocus={!item} disabled={pending} value={name} onChange={(event) => setName(event.target.value)} /></label><div className="form-split"><label><span>Количество</span><input type="number" min="0.01" max="1000000" step="0.01" inputMode="decimal" required placeholder="500" disabled={pending} value={quantity} onChange={(event) => setQuantity(event.target.value)} /></label><label><span>Единица</span><select value={unit} disabled={pending} onChange={(event) => setUnit(event.target.value as InventoryItem["unit"])}><option>г</option><option>мл</option><option>шт</option></select></label></div><label><span>Категория</span><select value={category} disabled={pending} onChange={(event) => setCategory(event.target.value as ShoppingCategoryId)}>{shoppingCategories.map((option) => <option key={option.id} value={option.id}>{option.title}</option>)}</select></label><label><span>Срок годности <small>необязательно</small></span><input type="date" disabled={pending} value={expiryDate} onChange={(event) => setExpiryDate(event.target.value)} /></label><button className="main-action" type="submit" disabled={pending || !name.trim() || !Number.isFinite(Number(quantity)) || Number(quantity) <= 0}>{saving ? "Сохраняем…" : item ? "Сохранить изменения" : "Добавить в запасы"}</button>{item && <button className="danger-action" type="button" disabled={pending} onClick={() => void remove()}><Trash2 size={18} />{deleting ? "Удаляем…" : "Удалить продукт"}</button>}</form>
   </div></div>;
 }
 
