@@ -3,10 +3,32 @@ import { CUISINE_OPTIONS, TOP_WORLD_CUISINES } from "@/lib/cuisines";
 import { mealPlanRequestSchema } from "@/lib/schemas/meal-plan";
 
 describe("cuisine options", () => {
-  it("contains the current TasteAtlas top 20 without duplicates", () => {
+  it("contains 20 selected ranked cuisines without duplicates", () => {
     expect(TOP_WORLD_CUISINES).toHaveLength(20);
     expect(new Set(TOP_WORLD_CUISINES).size).toBe(20);
     expect(TOP_WORLD_CUISINES.every((cuisine) => CUISINE_OPTIONS.includes(cuisine))).toBe(true);
+  });
+
+  it("replaces the excluded cuisines with the next unique ranked choices", () => {
+    expect(TOP_WORLD_CUISINES).toEqual(
+      expect.arrayContaining([
+        "Грузинская",
+        "Венгерская",
+        "Колумбийская",
+        "Филиппинская",
+        "Аргентинская"
+      ])
+    );
+
+    expect(TOP_WORLD_CUISINES).not.toEqual(
+      expect.arrayContaining([
+        "Сербская",
+        "Индийская",
+        "Польская",
+        "Американская",
+        "Хорватская"
+      ])
+    );
   });
 
   it("keeps the existing Thai and Mediterranean choices", () => {
