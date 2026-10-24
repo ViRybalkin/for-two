@@ -3,20 +3,16 @@ import { CUISINE_OPTIONS, TOP_WORLD_CUISINES } from "@/lib/cuisines";
 import { mealPlanRequestSchema } from "@/lib/schemas/meal-plan";
 
 describe("cuisine options", () => {
-  it("contains 20 selected ranked cuisines without duplicates", () => {
-    expect(TOP_WORLD_CUISINES).toHaveLength(20);
-    expect(new Set(TOP_WORLD_CUISINES).size).toBe(20);
+  it("contains the selected cuisines without duplicates", () => {
+    expect(TOP_WORLD_CUISINES).toHaveLength(16);
+    expect(new Set(TOP_WORLD_CUISINES).size).toBe(16);
     expect(TOP_WORLD_CUISINES.every((cuisine) => CUISINE_OPTIONS.includes(cuisine))).toBe(true);
   });
 
   it("keeps the selected replacements and excludes removed cuisines", () => {
     expect(TOP_WORLD_CUISINES).toEqual(
       expect.arrayContaining([
-        "Русская",
-        "Венгерская",
-        "Колумбийская",
-        "Филиппинская",
-        "Аргентинская"
+        "Русская"
       ])
     );
 
@@ -27,7 +23,11 @@ describe("cuisine options", () => {
         "Польская",
         "Американская",
         "Хорватская",
-        "Грузинская"
+        "Грузинская",
+        "Венгерская",
+        "Колумбийская",
+        "Филиппинская",
+        "Аргентинская"
       ])
     );
   });
