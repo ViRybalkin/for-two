@@ -28,6 +28,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   Trash2,
+  ThumbsDown,
   Utensils,
   WalletCards,
   X
@@ -55,10 +56,10 @@ type InventoryItem = {
 };
 type InventoryFormValue = Pick<InventoryItem, "name" | "quantity" | "unit"> & { category: ShoppingCategoryId; expiryDate: string | null };
 type ShoppingUnit = "g" | "ml" | "piece";
-type ShoppingItem = { id: string; name: string; detail: string; price: number; bought: boolean; store: "Tops" | "Makro"; url?: string | null; imageUrl?: string | null; purchasedQuantity?: number; purchasedUnit?: ShoppingUnit; category?: ShoppingCategoryId };
+type ShoppingItem = { id: string; name: string; detail: string; price: number; bought: boolean; store: "Tops" | "Makro"; url?: string | null; imageUrl?: string | null; purchasedQuantity?: number; purchasedUnit?: ShoppingUnit; category?: ShoppingCategoryId; usedInDishes?: Array<{ dishName: string; quantity: number; unit: ShoppingUnit }> };
 type CatalogProduct = { store: "tops" | "makro"; originalName: string; packageText: string | null; priceThb: number | null; url: string; imageUrl: string | null; availability: string; checkedAt: string };
 type MealDish = GeneratedMealPlan["dishes"][number];
-type SavedMealPlan = { id: string; mode: "inventory" | "stores"; request: MealPlanRequest; plan: GeneratedMealPlan; completed: string[] };
+type SavedMealPlan = { id: string; mode: "inventory" | "stores"; request: MealPlanRequest; plan: GeneratedMealPlan; completed: string[]; skipped: string[]; feedback: Record<string, -1 | 1> };
 
 function formatExpiryDate(expiryDate: string | null) {
   if (!expiryDate) return "срок не указан";
@@ -117,7 +118,7 @@ export function AppShell() {
       .then((response) => response.ok ? response.json() : null)
       .then((data) => {
         const latest = data?.source === "supabase" && Array.isArray(data.items) ? data.items[0] : null;
-        if (latest?.plan && latest?.request) setSavedPlan({ ...latest, completed: Array.isArray(latest.completed) ? latest.completed : [] });
+        if (latest?.plan && latest?.request) setSavedPlan({ ...latest, completed: Array.isArray(latest.completed) ? latest.completed : [], skipped: Array.isArray(latest.skipped) ? latest.skipped : [], feedback: latest.feedback && typeof latest.feedback === "object" ? latest.feedback : {} });
       })
       .catch(() => null)
       .finally(() => setPlanLoading(false));
@@ -200,11 +201,28 @@ export function AppShell() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error?.message || "Не удалось отметить блюдо");
-      setSavedPlan((current) => current ? { ...current, completed: data.completed || current.completed } : current);
+      setSavedPlan((current) => current ? { ...current, completed: data.completed || current.completed, skipped: data.skipped || current.skipped, feedback: data.feedback || current.feedback } : current);
       setSheet(null);
       notify("Блюдо приготовлено · следующим показано ближайшее");
     } catch (error) {
       notify(error instanceof Error ? error.message : "Не удалось отметить блюдо");
+    }
+  };
+
+  const updateDishPreference = async (dish: MealDish, state: { skipped?: boolean; feedback?: -1 | 0 | 1 }) => {
+    if (!savedPlan) return notify("Сначала сохраните меню");
+    try {
+      const response = await fetch(`/api/meal-plans/${savedPlan.id}/complete`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ date: dish.date, mealType: dish.mealType, ...state })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error?.message || "Не удалось сохранить выбор");
+      setSavedPlan((current) => current ? { ...current, completed: data.completed || current.completed, skipped: data.skipped || current.skipped, feedback: data.feedback || current.feedback } : current);
+      notify(state.skipped ? "Блюдо пропущено и будет учтено в следующем меню" : state.feedback === -1 ? "Блюдо больше не будем предлагать" : "Оценка удалена");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Не удалось сохранить выбор");
     }
   };
 
@@ -277,7 +295,7 @@ export function AppShell() {
         }
       }} />}
       {sheet === "settings" && <SettingsSheet onClose={() => setSheet(null)} notify={notify} />}
-      {sheet === "recipe" && selectedDish && <RecipeView dish={selectedDish} completed={Boolean(savedPlan?.completed.includes(getMealDishKey(selectedDish.date, selectedDish.mealType)))} onComplete={completeDish} onClose={() => setSheet(null)} />}
+      {sheet === "recipe" && selectedDish && <RecipeView dish={selectedDish} completed={Boolean(savedPlan?.completed.includes(getMealDishKey(selectedDish.date, selectedDish.mealType)))} skipped={Boolean(savedPlan?.skipped.includes(getMealDishKey(selectedDish.date, selectedDish.mealType)))} disliked={savedPlan?.feedback[getMealDishKey(selectedDish.date, selectedDish.mealType)] === -1} onComplete={completeDish} onPreference={updateDishPreference} onClose={() => setSheet(null)} />}
       {sheet === "catalog" && <CatalogSearchSheet onClose={() => setSheet(null)} onAdd={async (product) => {
         const item = { id: crypto.randomUUID(), name: product.originalName, detail: product.packageText || "фасовка не указана", price: product.priceThb || 0, bought: false, store: (product.store === "tops" ? "Tops" : "Makro") as ShoppingItem["store"], url: product.url, imageUrl: product.imageUrl };
         try {
@@ -474,6 +492,7 @@ function MenuScreen({ inventory, setShopping, savedPlan, onPlanSaved, onRecipe, 
       .then((response) => response.ok ? response.json() : null)
       .then((data) => {
         if (Array.isArray(data?.settings?.nutritionProfiles) && data.settings.nutritionProfiles.length === 2) setNutritionProfiles(data.settings.nutritionProfiles);
+        if (typeof data?.settings?.maxCookingMinutes === "number") setCookingMinutes(data.settings.maxCookingMinutes);
       })
       .catch(() => null);
   }, []);
@@ -491,8 +510,9 @@ function MenuScreen({ inventory, setShopping, savedPlan, onPlanSaved, onRecipe, 
         budgetThb: mode === "stores" ? budget : undefined,
         cuisines: cuisines.map((item) => item.toLowerCase()),
         mealTypes: meals.map((meal) => mealTypeMap[meal as keyof typeof mealTypeMap]),
-        inventory: inventory.map(({ name, quantity, unit, expiry }) => ({ name, quantity, unit, expiry })),
+        inventory: inventory.filter((item) => item.quantity > 0).map(({ name, quantity, unit, expiry }) => ({ name, quantity, unit, expiry })),
         nutritionProfiles,
+        maxCookingMinutes: cookingMinutes,
         wish: wish.trim() || undefined
       };
       const response = await fetch("/api/meal-plans/generate", {
@@ -503,7 +523,7 @@ function MenuScreen({ inventory, setShopping, savedPlan, onPlanSaved, onRecipe, 
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error?.message || "Не удалось составить меню");
       setPlan(data.plan || null);
-      setLastRequest(requestData);
+      setLastRequest(data.request || requestData);
       setSavedPlanId(null);
       setGenerated(true);
       notify(data.source === "openai" ? "Меню создано моделью OpenAI" : "Черновик меню готов");
@@ -521,9 +541,11 @@ function MenuScreen({ inventory, setShopping, savedPlan, onPlanSaved, onRecipe, 
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error?.message || "Не удалось сохранить меню");
       setSavedPlanId(data.id || null);
-      if (data.id) onPlanSaved({ id: data.id, mode, request: lastRequest, plan, completed: [] });
+      const savedPlan = data.plan || plan;
+      if (data.plan) setPlan(data.plan);
+      if (data.id) onPlanSaved({ id: data.id, mode, request: lastRequest, plan: savedPlan, completed: [], skipped: [], feedback: {} });
       if (Array.isArray(data.shoppingItems)) setShopping(data.shoppingItems);
-      notify(mode === "stores" ? `Меню сохранено · ${data.shoppingItems?.length || 0} покупок добавлено` : "Меню сохранено в базе");
+      notify(data.budgetExceeded ? `Меню сохранено, но каталог превышает бюджет на ${Math.round(data.overBudgetByThb)} ฿` : data.budgetAdjusted ? "Меню автоматически скорректировано под бюджет" : mode === "stores" ? `Меню сохранено · ${data.shoppingItems?.length || 0} покупок добавлено` : "Меню сохранено в базе");
       if (mode === "stores" && data.shoppingItems?.length) onShopping();
     } catch (error) {
       notify(error instanceof Error ? error.message : "Не удалось сохранить меню");
@@ -694,6 +716,7 @@ function ShoppingScreen({ items, loading, savedPlan, setItems, setInventory, not
       </div>
       {!loading && items.length === 0 && savedPlan?.mode === "stores" && savedPlan.plan.missingProducts.length > 0 && <button className="secondary-action shopping-sync" disabled={syncing} onClick={() => void syncFromMenu()}>{syncing ? <span className="spinner" /> : <ShoppingBasket size={18} />}{syncing ? "Создаём список…" : "Создать список из сохранённого меню"}</button>}
       <div className="total-card"><span><small>Ориентировочно</small><b>{total} ฿</b></span><span><small>Осталось купить</small><b>{visible.filter((i) => !i.bought).reduce((sum, i) => sum + i.price, 0)} ฿</b></span></div>
+      {savedPlan?.request.budgetThb && total > savedPlan.request.budgetThb ? <p className="budget-alert">Список по каталогу дороже бюджета на {Math.round(total - savedPlan.request.budgetThb)} ฿. Цена модели была только предварительной оценкой.</p> : null}
       {items.length > 0 && <p className="shopping-completion-note">Куплено: {done} · не куплено: {visible.length - done}. В запасы попадут только купленные товары.</p>}
       <button className="main-action bottom-space" disabled={completing || pendingId !== null || items.length === 0} onClick={() => void complete()}>{completing ? "Переносим купленное в запасы…" : "Завершить покупки"}</button>
     </section>
@@ -710,7 +733,7 @@ function ShoppingListItem({ item, pending, onToggle, onRemove, onQuantity }: { i
   return <article className={item.bought ? "shopping-item bought" : "shopping-item"}>
     <label className="shopping-check" aria-label={`${item.bought ? "Вернуть в покупки" : "Отметить купленным"}: ${item.name}`}><input type="checkbox" checked={item.bought} disabled={pending} onChange={onToggle} /><span className="fake-check"><Check size={15} /></span></label>
     {item.imageUrl ? <img className="shopping-image" src={item.imageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className="shopping-image placeholder"><ShoppingBasket size={18} /></span>}
-    <span className="shopping-copy"><b>{item.name}</b><small>{item.detail}</small>{item.url && <a href={item.url} target="_blank" rel="noreferrer">Открыть на сайте {item.store}</a>}</span>
+    <span className="shopping-copy"><b>{item.name}</b><small>{item.detail}</small>{item.usedInDishes?.length ? <small className="shopping-usage">Для: {item.usedInDishes.map((usage) => `${usage.dishName} (${Math.round(usage.quantity * 10) / 10} ${usage.unit === "g" ? "г" : usage.unit === "ml" ? "мл" : "шт"})`).join(", ")}</small> : null}{item.url && <a href={item.url} target="_blank" rel="noreferrer">Открыть на сайте {item.store}</a>}</span>
     <span className="shopping-actions"><strong>{item.price} ฿</strong><button type="button" disabled={pending} onClick={onRemove} aria-label={`Удалить из покупок: ${item.name}`}><Trash2 size={17} /></button></span>
     {item.bought && <div className="purchased-editor"><label><span>Количество</span><input aria-label={`Фактическое количество: ${item.name}`} type="number" min="0.01" step="0.01" value={quantity} disabled={pending} onChange={(event) => setQuantity(Number(event.target.value))} /></label><label><span>Единица</span><select aria-label={`Единица купленного: ${item.name}`} value={unit} disabled={pending} onChange={(event) => setUnit(event.target.value as ShoppingUnit)}><option value="g">г</option><option value="ml">мл</option><option value="piece">шт</option></select></label><button type="button" disabled={pending || !Number.isFinite(quantity) || quantity <= 0} onClick={() => onQuantity(quantity, unit)}>Сохранить</button></div>}
   </article>;
@@ -849,7 +872,7 @@ function SettingsSheet({ onClose, notify }: { onClose: () => void; notify: (text
 
 function Toggle({ label, checked, setChecked }: { label: string; checked: boolean; setChecked: (v: boolean) => void }) { return <button type="button" className={checked ? "toggle on" : "toggle"} onClick={() => setChecked(!checked)} aria-label={label} aria-pressed={checked}><i /></button>; }
 
-function RecipeView({ dish, completed, onComplete, onClose }: { dish: MealDish; completed: boolean; onComplete: (dish: MealDish) => Promise<void>; onClose: () => void }) {
+function RecipeView({ dish, completed, skipped, disliked, onComplete, onPreference, onClose }: { dish: MealDish; completed: boolean; skipped: boolean; disliked: boolean; onComplete: (dish: MealDish) => Promise<void>; onPreference: (dish: MealDish, state: { skipped?: boolean; feedback?: -1 | 0 | 1 }) => Promise<void>; onClose: () => void }) {
   const [servings, setServings] = useState(dish.servings);
   const [completing, setCompleting] = useState(false);
   const factor = servings / dish.servings;
@@ -864,6 +887,7 @@ function RecipeView({ dish, completed, onComplete, onClose }: { dish: MealDish; 
       <section className="recipe-section"><h2>Ингредиенты</h2>{dish.ingredients.map((ingredient) => <div className="ingredient" key={`${ingredient.name}-${ingredient.unit}`}><span>{ingredient.name}{ingredient.fromInventory ? <small> · из запасов</small> : null}</span><b>{Math.round(ingredient.quantity * factor * 10) / 10} {unitNames[ingredient.unit]}</b></div>)}</section>
       <section className="recipe-section steps"><h2>Как приготовить</h2>{dish.instructions.map((instruction, index) => <div key={`${index}-${instruction}`}><span>{index + 1}</span><p>{instruction}</p></div>)}</section>
       <button className="main-action" disabled={completed || completing} onClick={async () => { setCompleting(true); await onComplete(dish); setCompleting(false); }}><CookingPot />{completed ? "Уже приготовлено" : completing ? "Сохраняем…" : "Приготовлено"}</button>
+      <div className="recipe-feedback"><button type="button" className={skipped ? "active" : ""} onClick={() => void onPreference(dish, { skipped: !skipped })}><X size={17} />{skipped ? "Пропущено" : "Пропустить"}</button><button type="button" className={disliked ? "active" : ""} onClick={() => void onPreference(dish, { feedback: disliked ? 0 : -1 })}><ThumbsDown size={17} />{disliked ? "Не предлагать" : "Не понравилось"}</button></div>
     </div>
   </article></div>;
 }

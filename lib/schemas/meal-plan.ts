@@ -16,7 +16,14 @@ export const mealPlanRequestSchema = z.object({
     expiry: z.string().max(80)
   })).max(250).default([]),
   nutritionProfiles: nutritionProfilesSchema.default(defaultNutritionProfiles),
-  wish: z.string().max(500).optional()
+  wish: z.string().max(1000).optional(),
+  maxCookingMinutes: z.number().int().min(15).max(180).optional(),
+  difficulty: z.enum(["easy", "medium", "hard"]).optional(),
+  equipment: z.array(z.string().min(1).max(60)).max(30).optional(),
+  allowRepeats: z.boolean().optional(),
+  batchCookingEnabled: z.boolean().optional(),
+  recentMealNames: z.array(z.string().min(1).max(160)).max(30).optional(),
+  avoidedMealNames: z.array(z.string().min(1).max(160)).max(30).optional()
 });
 
 const nutritionSchema = z.object({

@@ -11,6 +11,15 @@ export const saveMealPlanSchema = z.object({
   plan: persistedMealPlanSchema
 });
 
+function readStringArray(value: unknown) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function readFeedback(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {} as Record<string, -1 | 1>;
+  return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, -1 | 1] => entry[1] === -1 || entry[1] === 1));
+}
+
 export async function saveMealPlan(input: z.infer<typeof saveMealPlanSchema>) {
   const client = getSupabaseAdmin();
   const { data: household, error: householdError } = await client.from("households").select("id").order("created_at").limit(1).single();
@@ -28,6 +37,15 @@ export async function saveMealPlan(input: z.infer<typeof saveMealPlanSchema>) {
   }).select("id").single();
   if (error) throw error;
   return data.id as string;
+}
+
+export async function updateSavedMealPlan(id: string, plan: z.infer<typeof persistedMealPlanSchema>) {
+  const client = getSupabaseAdmin();
+  const { data, error: loadError } = await client.from("meal_plans").select("parameters").eq("id", id).single();
+  if (loadError) throw loadError;
+  const parameters = data.parameters && typeof data.parameters === "object" ? data.parameters as Record<string, unknown> : {};
+  const { error } = await client.from("meal_plans").update({ parameters: { ...parameters, plan } }).eq("id", id);
+  if (error) throw error;
 }
 
 export async function listMealPlans() {
@@ -48,7 +66,9 @@ export async function listMealPlans() {
       request: parsed.data.request,
       plan: parsed.data.plan,
       dishImages: parameters.dishImages,
-      completed: Array.isArray(parameters.completed) ? parameters.completed.filter((value): value is string => typeof value === "string") : []
+      completed: readStringArray(parameters.completed),
+      skipped: readStringArray(parameters.skipped),
+      feedback: readFeedback(parameters.feedback)
     }];
   });
   return Promise.all(parsedRows.map(async ({ dishImages, ...row }) => ({ ...row, plan: await attachSignedMealImages(row.plan, dishImages) })));
@@ -63,7 +83,9 @@ export async function getMealPlan(id: string) {
     id: data.id as string,
     ...parsed,
     plan: await attachSignedMealImages(parsed.plan, parameters.dishImages),
-    completed: Array.isArray(parameters.completed) ? parameters.completed.filter((value): value is string => typeof value === "string") : []
+    completed: readStringArray(parameters.completed),
+    skipped: readStringArray(parameters.skipped),
+    feedback: readFeedback(parameters.feedback)
   };
 }
 
@@ -72,13 +94,63 @@ export async function setMealPlanDishCompleted(id: string, input: z.infer<typeof
   const { data, error: loadError } = await client.from("meal_plans").select("parameters").eq("id", id).single();
   if (loadError) throw loadError;
   const parameters = data.parameters && typeof data.parameters === "object" ? data.parameters as Record<string, unknown> : {};
-  const current = new Set(Array.isArray(parameters.completed) ? parameters.completed.filter((value): value is string => typeof value === "string") : []);
+  const current = new Set(readStringArray(parameters.completed));
+  const skippedSet = new Set(readStringArray(parameters.skipped));
+  const feedback = readFeedback(parameters.feedback);
   const key = getMealDishKey(input.date, input.mealType);
-  if (input.completed) current.add(key); else current.delete(key);
+  if (input.completed !== undefined) {
+    if (input.completed) {
+      current.add(key);
+      skippedSet.delete(key);
+    } else current.delete(key);
+  }
+  if (input.skipped !== undefined) {
+    if (input.skipped) {
+      skippedSet.add(key);
+      current.delete(key);
+    } else skippedSet.delete(key);
+  }
+  if (input.feedback === 0) delete feedback[key];
+  else if (input.feedback !== undefined) feedback[key] = input.feedback;
   const completed = [...current];
-  const { error: updateError } = await client.from("meal_plans").update({ parameters: { ...parameters, completed } }).eq("id", id);
+  const skipped = [...skippedSet];
+  const { error: updateError } = await client.from("meal_plans").update({ parameters: { ...parameters, completed, skipped, feedback } }).eq("id", id);
   if (updateError) throw updateError;
-  return completed;
+  return { completed, skipped, feedback };
+}
+
+export async function loadMealPlanMemory() {
+  const { data, error } = await getSupabaseAdmin()
+    .from("meal_plans")
+    .select("parameters,created_at")
+    .order("created_at", { ascending: false })
+    .limit(20);
+  if (error) throw error;
+
+  const recentMealNames: string[] = [];
+  const avoidedMealNames: string[] = [];
+  const seenRecent = new Set<string>();
+  const seenAvoided = new Set<string>();
+  for (const row of data || []) {
+    const parameters = row.parameters && typeof row.parameters === "object" ? row.parameters as Record<string, unknown> : {};
+    const plan = persistedMealPlanSchema.safeParse(parameters.plan);
+    if (!plan.success) continue;
+    const skipped = new Set(readStringArray(parameters.skipped));
+    const feedback = readFeedback(parameters.feedback);
+    for (const dish of plan.data.dishes) {
+      const normalizedTitle = dish.title.trim().toLocaleLowerCase("ru");
+      if (!seenRecent.has(normalizedTitle) && recentMealNames.length < 30) {
+        seenRecent.add(normalizedTitle);
+        recentMealNames.push(dish.title.trim());
+      }
+      const key = getMealDishKey(dish.date, dish.mealType);
+      if ((skipped.has(key) || feedback[key] === -1) && !seenAvoided.has(normalizedTitle) && avoidedMealNames.length < 30) {
+        seenAvoided.add(normalizedTitle);
+        avoidedMealNames.push(dish.title.trim());
+      }
+    }
+  }
+  return { recentMealNames, avoidedMealNames };
 }
 
 export async function deleteMealPlan(id: string) {

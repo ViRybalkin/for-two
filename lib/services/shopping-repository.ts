@@ -48,6 +48,7 @@ type ShoppingMetadata = {
   purchasedQuantity?: number;
   purchasedUnit?: BaseUnit;
   category?: ShoppingCategoryId;
+  usedInDishes?: Array<{ dishName: string; quantity: number; unit: BaseUnit }>;
 };
 
 function safeHttpUrl(value: unknown) {
@@ -71,6 +72,12 @@ export function decodeShoppingMetadata(value: string | null): ShoppingMetadata {
     if (typeof parsed.purchasedQuantity === "number" && parsed.purchasedQuantity > 0) metadata.purchasedQuantity = parsed.purchasedQuantity;
     if (parsed.purchasedUnit === "g" || parsed.purchasedUnit === "ml" || parsed.purchasedUnit === "piece") metadata.purchasedUnit = parsed.purchasedUnit;
     if (isShoppingCategoryId(parsed.category)) metadata.category = parsed.category;
+    if (Array.isArray(parsed.usedInDishes)) {
+      metadata.usedInDishes = parsed.usedInDishes.flatMap((usage) => {
+        if (!usage || typeof usage.dishName !== "string" || !usage.dishName.trim() || typeof usage.quantity !== "number" || usage.quantity <= 0 || !["g", "ml", "piece"].includes(usage.unit)) return [];
+        return [{ dishName: usage.dishName.trim(), quantity: usage.quantity, unit: usage.unit }];
+      }).slice(0, 20);
+    }
     return metadata;
   } catch {
     return { detail: "фасовка не указана", url: null, imageUrl: null };
@@ -180,7 +187,8 @@ export async function listShoppingItems() {
       imageUrl: metadata.imageUrl,
       purchasedQuantity: purchased.quantity,
       purchasedUnit: purchased.unit,
-      category: metadata.category
+      category: metadata.category,
+      usedInDishes: metadata.usedInDishes
     };
   });
 }
@@ -254,6 +262,19 @@ export async function createShoppingItemsForMealPlan(mealPlanId: string, plan: G
     combined.set(key, current ? { ...current, quantity: current.quantity + item.quantity } : { name: item.name.trim(), normalizedName, quantity: item.quantity, unit: item.unit });
   }
   const productsToSave = [...combined.values()];
+  const missingProductKeys = new Set(productsToSave.map((item) => `${item.normalizedName}:${item.unit}`));
+  const usageByProduct = new Map<string, Array<{ dishName: string; quantity: number; unit: BaseUnit }>>();
+  for (const dish of plan.dishes) {
+    for (const ingredient of dish.ingredients) {
+      const key = `${ingredient.name.trim().toLocaleLowerCase("ru")}:${ingredient.unit}`;
+      if (!missingProductKeys.has(key)) continue;
+      const usages = usageByProduct.get(key) || [];
+      const existing = usages.find((usage) => usage.dishName === dish.title);
+      if (existing) existing.quantity += ingredient.quantity;
+      else usages.push({ dishName: dish.title, quantity: ingredient.quantity, unit: ingredient.unit });
+      usageByProduct.set(key, usages);
+    }
+  }
   const productNames = productsToSave.map((item) => item.name);
   const { data: products, error: productError } = await client
     .from("products")
@@ -280,7 +301,8 @@ export async function createShoppingItemsForMealPlan(mealPlanId: string, plan: G
         purchasedUnit: purchase.purchasedUnit,
         url: null,
         imageUrl: null,
-        category: getShoppingCategory(item.name)
+        category: getShoppingCategory(item.name),
+        usedInDishes: usageByProduct.get(`${item.normalizedName}:${item.unit}`) || []
       })
     };
   });
@@ -317,7 +339,8 @@ export async function createShoppingItemsForMealPlan(mealPlanId: string, plan: G
             purchasedUnit: purchase.purchasedUnit,
             url: catalog?.url || null,
             imageUrl: catalog?.imageUrl || null,
-            category: categories[index]
+            category: categories[index],
+            usedInDishes: usageByProduct.get(`${item.normalizedName}:${item.unit}`) || []
           })
         })
         .eq("id", shoppingItemId);

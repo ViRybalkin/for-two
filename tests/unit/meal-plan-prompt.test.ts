@@ -31,6 +31,14 @@ describe("buildMealPlanSystemPrompt", () => {
     expect(prompt).toContain("Яичница со шпинатом и картофелем");
     expect(prompt).toContain("сравни все блюда попарно");
     expect(prompt).toContain("Меняй как минимум два существенных признака блюда");
+    expect(prompt).toContain("Не повторяй блюда из recentMealNames");
+    expect(prompt).toContain("Блюда из avoidedMealNames");
+  });
+
+  it("treats the store budget and saved settings as constraints", () => {
+    expect(prompt).toContain("budgetThb — жёсткий предел");
+    expect(prompt).toContain("Не превышай maxCookingMinutes и difficulty");
+    expect(prompt).toContain("Используй только equipment");
   });
 
   it("does not require kitchen scales", () => {

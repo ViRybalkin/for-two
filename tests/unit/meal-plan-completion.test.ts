@@ -8,6 +8,9 @@ describe("meal completion contract", () => {
 
   it("validates completion changes", () => {
     expect(mealPlanCompletionSchema.safeParse({ date: "2026-10-08", mealType: "lunch", completed: true }).success).toBe(true);
+    expect(mealPlanCompletionSchema.safeParse({ date: "2026-10-08", mealType: "lunch", skipped: true }).success).toBe(true);
+    expect(mealPlanCompletionSchema.safeParse({ date: "2026-10-08", mealType: "lunch", feedback: -1 }).success).toBe(true);
+    expect(mealPlanCompletionSchema.safeParse({ date: "2026-10-08", mealType: "lunch" }).success).toBe(false);
     expect(mealPlanCompletionSchema.safeParse({ date: "08.10.2026", mealType: "lunch" }).success).toBe(false);
   });
 });

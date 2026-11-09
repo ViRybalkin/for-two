@@ -18,6 +18,11 @@ describe("shopping persistence schemas", () => {
     expect(decodeShoppingMetadata(encodeShoppingMetadata({ ...metadata, category: "invalid" as never })).category).toBeUndefined();
   });
 
+  it("keeps the dishes that require a shopping item", () => {
+    const metadata = { detail: "500 г", url: null, imageUrl: null, usedInDishes: [{ dishName: "Карри с нутом", quantity: 300, unit: "g" as const }] };
+    expect(decodeShoppingMetadata(encodeShoppingMetadata(metadata))).toEqual(metadata);
+  });
+
   it("rejects unknown stores and negative prices", () => {
     expect(shoppingItemInputSchema.safeParse({ name: "Рис", detail: "1 упаковка", price: -1, store: "Lotus" }).success).toBe(false);
     expect(shoppingItemInputSchema.safeParse({ name: "Рис", detail: "1 упаковка", price: 120, store: "Tops" }).success).toBe(false);

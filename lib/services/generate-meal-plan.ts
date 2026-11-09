@@ -10,6 +10,8 @@ import { buildMealPlanSystemPrompt } from "@/lib/prompts/meal-plan";
 
 export async function generateMealPlan(input: MealPlanRequest) {
   const client = getOpenAI();
+  const availableInventory = input.inventory.filter((item) => item.quantity > 0);
+  const sanitizedInput = { ...input, inventory: availableInventory };
   const startDate = input.startDate || getBangkokDate();
   const response = await client.responses.parse({
     model: process.env.OPENAI_TEXT_MODEL || "gpt-6-luna",
@@ -27,13 +29,13 @@ export async function generateMealPlan(input: MealPlanRequest) {
       },
       {
         role: "user",
-        content: JSON.stringify({ ...input, startDate, nutritionTargets: buildNutritionTargets(input.nutritionProfiles, input.mealTypes) })
+        content: JSON.stringify({ ...sanitizedInput, startDate, nutritionTargets: buildNutritionTargets(input.nutritionProfiles, input.mealTypes) })
       }
     ],
     text: { format: zodTextFormat(generatedMealPlanSchema, "meal_plan") }
   }, MEAL_PLAN_AI_REQUEST_OPTIONS);
 
   if (!response.output_parsed) throw new Error("Meal plan was not returned");
-  const normalizedPlan = normalizeMealPlanDates(response.output_parsed, { ...input, startDate });
-  return { plan: reconcileMealPlanWithInventory(normalizedPlan, input.inventory), usage: response.usage, model: response.model };
+  const normalizedPlan = normalizeMealPlanDates(response.output_parsed, { ...sanitizedInput, startDate });
+  return { plan: reconcileMealPlanWithInventory(normalizedPlan, availableInventory), usage: response.usage, model: response.model };
 }
